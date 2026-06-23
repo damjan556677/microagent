@@ -1,12 +1,36 @@
 # microagent configuration. NO secrets here — OPENROUTER_API_KEY is read from the environment.
 # Anything in here can be overridden at runtime via slash-commands (/model, /effort, /cd).
 
-model: deepseek            # alias resolved by agent/llm.py model registry (swap to opus-4.8 / kimi)
+# `model` is a SELECTOR: a bare PORT number (or an internal alias below) routes to an internal
+# server; OpenRouter aliases (deepseek / opus / sonnet / glm) fall back to OpenRouter.
+model: 8006                # internal DS-V4-Flash @ 10.123.51.179:8006  (default)
 reasoning_effort: high     # OpenRouter unified reasoning effort: low | medium | high  ("max" == high)
 max_turns: 60              # hard cap on agent turns per task
 nudge: 2                   # max finish-the-job re-prompts before giving up (0 disables)
 temperature: 0.3
 
+# Internal vLLM (OpenAI-compatible) model servers. A bare PORT selects the model:
+#   /model 8006 -> DS-V4-Flash ; /model 8003 -> GLM-5.2 ; /model 8002 -> GLM-5-FP8
+# No reasoning:{effort} is sent (vLLM rejects it); no API key unless internal.api_key_env names one.
+# `decode` is the transport per port (hub ports differ): sse (stream) | json (non-stream) | auto.
+#   - 8002 (GLM-5-FP8): JSON works.   - 8007 (GLM5.1): needs SSE.   - direct vLLM :8000: both.
+internal:
+  host: 10.123.51.179      # default host; a per-port `host:` below overrides it (other machines)
+  scheme: http
+  api_key_env: ""          # e.g. INTERNAL_API_KEY if a server was started with --api-key
+  reasoning: false
+  decode: auto             # default for unlisted ports: stream, fall back to JSON if no SSE body
+  ports:                   # model: "" => auto-detect via /v1/models; host: "" => use host above
+    8002: { alias: glm5-fp8, model: GLM-5-FP8,       decode: json }   # gateway: JSON works
+    8003: { alias: glm52,    model: GLM-5.2,         decode: auto }   # gateway, chat-only: SSE+JSON ok
+    8006: { alias: ds-flash, model: DS-V4-Flash-8no, decode: auto }   # direct vLLM (->DGX): anything works
+    8007: { alias: glm51,    model: GLM5.1,          decode: sse }    # gateway: JSON 500s, needs SSE
+    # Direct vLLM on the DGX node (what :8006 proxies to) — bypasses the hub. Note the host override.
+    8000: { alias: dgx-direct, host: 10.123.51.31, model: "", decode: auto }  # direct vLLM: anything works
+  aliases:                 # named model variants pinned on a port (override the port's default model)
+    glm52-think: { port: 8003, model: GLM-5.2-think }   # GLM-5.2 reasoning variant on the 8003 gateway
+
+# OpenRouter — the fallback / frontier provider. Select by alias: /model opus | sonnet | glm | deepseek
 openrouter:
   api_base: https://openrouter.ai/api/v1
   # api_key is taken from $OPENROUTER_API_KEY (never stored in this file)

@@ -2,8 +2,9 @@
 
 Slash-commands:
   /help                 show this help
-  /model [alias]        show or switch the model (deepseek, opus, kimi, glm, ...)
-  /effort [low|med|high]show or set reasoning effort
+  /model [port|alias]   show/switch model: a port (8006, 8003, 8002) or an OpenRouter alias
+                        (deepseek, opus, sonnet, glm). No arg lists the available selectors.
+  /effort [low|med|high]show or set reasoning effort (OpenRouter only; ignored by internal)
   /cd [path]            show or change the active kernel tree
   /index                build/refresh the cscope + compile_commands index of the active tree
   /raw                  toggle display of the model's reasoning stream
@@ -19,7 +20,7 @@ from tools import registry
 from . import palette as P
 
 HELP = (
-    "commands: /help  /model [a]  /effort [l|m|h]  /cd [path]  /index  /raw  "
+    "commands: /help  /model [port|alias]  /effort [l|m|h]  /cd [path]  /index  /raw  "
     "/tools  /reset  /quit"
 )
 
@@ -52,9 +53,17 @@ def _handle_command(session, console, line: str) -> bool:
         if arg:
             cfg.model = arg
             session.refresh_system()
-            console.system(f"model → {llm.model_label(arg)}")
+            console.system(f"model → {llm.current_label(cfg)}")
         else:
-            console.system(f"model = {llm.model_label(cfg.model)}")
+            console.system(f"model = {llm.current_label(cfg)}")
+            ports = "  ".join(
+                (f"{p} ({s.alias})" if s.alias else str(p))
+                for p, s in sorted(cfg.internal.ports.items()))
+            if ports:
+                console.system(f"  internal ports: {ports}")
+            if cfg.internal.aliases:
+                console.system("  internal aliases: " + "  ".join(sorted(cfg.internal.aliases)))
+            console.system("  openrouter:     " + "  ".join(sorted(llm.OPENROUTER)))
     elif cmd == "/effort":
         if arg:
             cfg.reasoning_effort = "high" if arg.lower() in ("max", "maximum") else arg
@@ -94,7 +103,7 @@ def _handle_command(session, console, line: str) -> bool:
 
 
 def run(session, console):
-    console.banner(llm.model_label(session.cfg.model))
+    console.banner(llm.current_label(session.cfg))
     while True:
         try:
             line = input(P.paint("\nmicroagent › ", P.GOLD, bold=True))

@@ -64,6 +64,64 @@ def model_label(name: str | None) -> str:
     return _PRETTY.get(mid, mid)
 
 
+# ========================================================== endpoint resolution
+# cfg.model is a SELECTOR: a bare port number (or a configured alias) routes to an
+# internal vLLM server; anything else falls back to OpenRouter.
+_MODEL_CACHE: dict = {}   # base_url -> detected served model id (one /v1/models probe)
+
+
+@dataclass
+class Endpoint:
+    base_url: str
+    api_key: str
+    model: str
+    reasoning: bool        # whether to send OpenRouter's reasoning:{effort} param
+    label: str
+    decode: str = "sse"    # transport: "sse" (stream) | "json" (non-stream) | "auto"
+
+
+def _detect_model(base_url: str, api_key: str) -> str:
+    """Best-effort: ask an OpenAI-compatible server for its served model id (/v1/models)."""
+    if base_url in _MODEL_CACHE:
+        return _MODEL_CACHE[base_url]
+    mid = ""
+    try:
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        r = requests.get(base_url.rstrip("/") + "/models", headers=headers, timeout=5)
+        if r.status_code == 200:
+            data = r.json().get("data") or []
+            if data:
+                mid = data[0].get("id") or ""
+    except Exception:
+        mid = ""
+    _MODEL_CACHE[base_url] = mid
+    return mid
+
+
+def resolve_endpoint(cfg, detect: bool = True) -> Endpoint:
+    """Map cfg.model (a selector) to a concrete Endpoint.
+
+    Bare port / internal alias -> internal server (http://host:port/v1, no reasoning
+    param, key only if configured). Otherwise -> OpenRouter (the fallback).
+    """
+    sel = (cfg.model or "").strip()
+    hit = cfg.internal.resolve(sel)
+    if hit:
+        host, port, model, decode = hit
+        base = f"{cfg.internal.scheme}://{host}:{port}/v1"
+        key = cfg.internal.api_key
+        if not model and detect:
+            model = _detect_model(base, key)
+        label = f"{model} @:{port}" if model else f"internal:{port}"
+        return Endpoint(base, key, model or sel, cfg.internal.reasoning, label, decode or "auto")
+    return Endpoint(cfg.api_base, cfg.api_key, resolve_model(sel), True, model_label(sel), "sse")
+
+
+def current_label(cfg) -> str:
+    """Pretty label for the active selector (no network probe)."""
+    return resolve_endpoint(cfg, detect=False).label
+
+
 # ============================================================ assembled result
 @dataclass
 class ToolCallSpec:
@@ -137,23 +195,25 @@ def extract_text_tool_calls(content: str) -> list:
 
 
 # ===================================================================== HTTP
-def _headers(cfg) -> dict:
-    return {
-        "Authorization": f"Bearer {cfg.api_key}",
+def _headers(ep) -> dict:
+    h = {
         "Content-Type": "application/json",
         "HTTP-Referer": "https://localhost/microagent",
         "X-Title": "microagent",
     }
+    if ep.api_key:                       # internal servers usually run keyless
+        h["Authorization"] = f"Bearer {ep.api_key}"
+    return h
 
 
-def _body(cfg, messages, tools, stream) -> dict:
+def _body(cfg, ep, messages, tools, stream) -> dict:
     body = {
-        "model": resolve_model(cfg.model),
+        "model": ep.model,
         "messages": messages,
         "temperature": cfg.temperature,
         "stream": stream,
     }
-    if cfg.reasoning_effort:
+    if ep.reasoning and cfg.reasoning_effort:
         body["reasoning"] = {"effort": cfg.reasoning_effort}   # OpenRouter unified reasoning
     if tools:
         body["tools"] = tools
@@ -197,13 +257,14 @@ def _merge_tool_delta(tool_map: dict, deltas: list):
 
 def _stream_once(cfg, messages, tools):
     """One streaming attempt. Yields StreamDelta; the final yielded item is a Completion."""
-    url = cfg.api_base.rstrip("/") + "/chat/completions"
+    ep = resolve_endpoint(cfg)
+    url = ep.base_url.rstrip("/") + "/chat/completions"
     content, reasoning = [], []
     tool_map: dict = {}
     usage = None
     finish_reason = "stop"
 
-    resp = requests.post(url, headers=_headers(cfg), json=_body(cfg, messages, tools, True),
+    resp = requests.post(url, headers=_headers(ep), json=_body(cfg, ep, messages, tools, True),
                          stream=True, timeout=600)
     if resp.status_code != 200:
         detail = (resp.text or "")[:500]
@@ -246,8 +307,9 @@ def _stream_once(cfg, messages, tools):
 
 def _complete_nonstream(cfg, messages, tools) -> Completion:
     """Non-streaming fallback (single POST)."""
-    url = cfg.api_base.rstrip("/") + "/chat/completions"
-    resp = requests.post(url, headers=_headers(cfg), json=_body(cfg, messages, tools, False),
+    ep = resolve_endpoint(cfg)
+    url = ep.base_url.rstrip("/") + "/chat/completions"
+    resp = requests.post(url, headers=_headers(ep), json=_body(cfg, ep, messages, tools, False),
                          timeout=600)
     if resp.status_code != 200:
         raise RuntimeError(f"HTTP {resp.status_code}: {(resp.text or '')[:500]}")
@@ -270,11 +332,16 @@ def stream_complete(cfg, messages, tools=None, stream=True, tries=3):
     Yields StreamDelta(kind, text) as tokens arrive; the FINAL yielded item is a
     Completion (assembled content/reasoning/tool_calls/usage). On total failure the
     final item is a Completion with `.error` set (never raises).
+
+    Transport follows the endpoint's `decode`: "json" => non-streaming, "sse" => streaming,
+    "auto" => stream first and fall back to non-streaming (some hub ports 200 with no SSE body).
     """
+    decode = resolve_endpoint(cfg, detect=False).decode
+    use_stream = stream and decode != "json"
     last = None
     for attempt in range(tries):
         try:
-            if not stream:
+            if not use_stream:
                 yield _complete_nonstream(cfg, messages, tools)
                 return
             final = None
@@ -283,10 +350,21 @@ def stream_complete(cfg, messages, tools=None, stream=True, tries=3):
                     final = item
                 else:
                     yield item
+            # "auto": a 200 that streamed nothing usually means the port wants JSON, not SSE.
+            if decode == "auto" and final is not None and not final.error \
+                    and not final.content and not final.reasoning and not final.tool_calls:
+                yield _complete_nonstream(cfg, messages, tools)
+                return
             yield final if final is not None else Completion(error="empty stream")
             return
         except Exception as e:                      # transient -> back off and retry
             last = e
             time.sleep(2 * (attempt + 1))
+    if use_stream and decode == "auto":             # streaming exhausted — try JSON once
+        try:
+            yield _complete_nonstream(cfg, messages, tools)
+            return
+        except Exception as e:
+            last = e
     sys.stderr.write(f"[llm] model call failed after {tries} tries: {last}\n")
     yield Completion(error=str(last), finish_reason="error")

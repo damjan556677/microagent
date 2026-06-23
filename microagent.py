@@ -53,9 +53,18 @@ def main():
     if a.no_color:
         palette.set_enabled(False)
 
-    if not cfg.api_key:
-        sys.stderr.write("error: OPENROUTER_API_KEY is not set in the environment.\n")
-        sys.exit(2)
+    # A key is only required for the chosen endpoint. Internal servers run keyless unless an
+    # api_key_env is configured; OpenRouter always needs OPENROUTER_API_KEY.
+    is_internal = cfg.internal.resolve((cfg.model or "").strip()) is not None
+    ep = llm.resolve_endpoint(cfg, detect=False)
+    if not ep.api_key:
+        if not is_internal:
+            sys.stderr.write("error: OPENROUTER_API_KEY is not set (required for OpenRouter models).\n")
+            sys.exit(2)
+        if cfg.internal.api_key_env:
+            sys.stderr.write(f"error: {cfg.internal.api_key_env} is not set "
+                             f"(required by this internal endpoint).\n")
+            sys.exit(2)
 
     console = Console(cfg)
     try:

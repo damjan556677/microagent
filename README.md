@@ -2,7 +2,8 @@
 
 A small, **self-contained** terminal coding agent that drives a large language model through a set
 of built-in tools to **navigate, optimize, build, and deploy a Linux kernel** — entirely from the
-command line. It speaks to [OpenRouter](https://openrouter.ai) over plain HTTP and ships with tools
+command line. By default it talks to **internal model servers** (vLLM / OpenAI-compatible) over plain
+HTTP and falls back to [OpenRouter](https://openrouter.ai) for frontier models. It ships with tools
 for code search, semantic navigation (clangd), cross-compilation, kernel-config editing, and booting
 the result under QEMU on a remote host.
 
@@ -52,12 +53,15 @@ Two things shaped the design:
 
 ```bash
 git clone https://github.com/damjan556677/microagent && cd microagent
-export OPENROUTER_API_KEY=sk-or-...
 
-python3 microagent.py                                   # interactive REPL
+python3 microagent.py                                   # interactive REPL (default model: port 8006)
 python3 microagent.py -p "explain how this kernel image is built"   # one-shot, then exit
-python3 microagent.py --model opus --effort high        # pick model / reasoning effort
+python3 microagent.py --model 8003                      # switch to another internal port (GLM-5.2)
 python3 microagent.py --tree /path/to/linux-src         # point at a different kernel tree
+
+# OpenRouter (fallback / frontier models) — only this path needs a key:
+export OPENROUTER_API_KEY=sk-or-...
+python3 microagent.py --model opus --effort high        # pick model / reasoning effort
 ```
 
 Flags: `--model`, `--effort {low|medium|high}`, `--tree PATH`, `--no-thinking`, `--no-color`,
@@ -68,7 +72,7 @@ Flags: `--model`, `--effort {low|medium|high}`, `--tree PATH`, `--no-thinking`, 
 | Command | Effect |
 |---|---|
 | `/help` | list commands |
-| `/model [alias]` | show or switch the model |
+| `/model [port\|alias]` | show or switch the model (an internal port, or an OpenRouter alias) |
 | `/effort [low\|medium\|high]` | show or set reasoning effort |
 | `/cd [path]` | show or change the active tree |
 | `/index` | build the fast compile-commands index (+ `.clangd`) for the active tree |
@@ -97,9 +101,9 @@ tool by appending to a module's `TOOLS` list (and `registry._MODULES` for a new 
 microagent.py        entry: argparse, REPL vs one-shot, UTF-8 stdout
 config.yaml       model, ssh target, kernel paths, gating, tui
 agent/
-  config.py       YAML + env (OPENROUTER_API_KEY) -> typed Config
+  config.py       YAML + env (OPENROUTER_API_KEY) -> typed Config; internal endpoint registry
   events.py       Status · StreamDelta · ToolCall · ToolResult · Nudge · Done
-  llm.py          hand-rolled OpenRouter client (streaming SSE), model registry, retry, recovery
+  llm.py          hand-rolled OpenAI-compatible client (SSE); endpoint resolution, retry, recovery
   history.py      message-history helpers (stores content + tool_calls only)
   loop.py         synchronous agent loop -> yields the event stream
   session.py      system prompt + conversation; ask(task)
@@ -119,14 +123,33 @@ knowledge/
 events live and dispatches tool calls → `tui/render.py` renders the normalized event stream. The
 loop stores only the assistant's content + tool calls in history (never the reasoning trace).
 
+## Models / endpoints
+
+`model` is a **selector**, resolved per call (`agent/llm.py:resolve_endpoint`):
+
+- A bare **port number** (or an alias from `internal.ports`) routes to an internal vLLM /
+  OpenAI-compatible server at `http://<host>:<port>/v1` (host defaults to `internal.host`). The
+  default is **`8006`** (DS-V4-Flash). These need **no API key** (unless `internal.api_key_env` is
+  set), and OpenRouter's `reasoning:{effort}` param is suppressed (`internal.reasoning: false`).
+- Anything else (`deepseek`, `opus`, `sonnet`, `glm`, …) falls back to **OpenRouter**, which needs
+  `OPENROUTER_API_KEY`.
+- Per-port **`decode`** picks the transport (`sse` stream / `json` non-stream / `auto`), because hub
+  ports differ: `8002` works with JSON, `8007` needs SSE, the direct vLLM node does both.
+- The served model id is auto-detected from `/v1/models` when `model` is left blank in config;
+  `internal.aliases` can pin a variant on a port (e.g. `glm52-think` → `GLM-5.2-think` on `8003`),
+  and a per-port `host:` override lets a server live on another machine.
+- The agent requires **structured tool-calling**: each vLLM server must be launched with
+  `--enable-auto-tool-choice --tool-call-parser <parser>`, else tool calls won't be emitted.
+
 ## Model & reasoning
 
-- Default alias `deepseek` → `deepseek/deepseek-v4-pro` — a reasoning model that **also reliably
-  emits structured tool calls** (the plain `deepseek-r1` reasoner narrates but won't call tools, so
-  it's a poor agent backend). Swappable aliases include `opus`, `sonnet`, `kimi`, `glm`; the full
-  alias→model map lives in `agent/llm.py`.
+- The default model is an **internal port** (`8006` → DS-V4-Flash). OpenRouter aliases are the
+  fallback: `deepseek` → `deepseek/deepseek-v4-pro` — a reasoning model that **also reliably emits
+  structured tool calls** (the plain `deepseek-r1` reasoner narrates but won't call tools, so it's a
+  poor agent backend) — plus `opus`, `sonnet`, `kimi`, `glm`; the full alias→model map lives in
+  `agent/llm.py`.
 - Reasoning effort is sent as OpenRouter's unified `reasoning.effort` (`low|medium|high`; `max` maps
-  to `high`).
+  to `high`). It is **not** sent to internal servers (they reject it).
 - The SSE stream is force-decoded as UTF-8 (`resp.encoding = "utf-8"`), otherwise box-drawing and
   arrow characters arrive mojibaked (HTTP defaults `text/*` to ISO-8859-1).
 - The client recovers tool calls some open models leak as markup instead of structured `tool_calls`.
@@ -163,7 +186,8 @@ clangd can parse kernel translation units.
 | Key | Meaning |
 |---|---|
 | `model`, `reasoning_effort`, `max_turns`, `nudge`, `temperature` | LLM behaviour |
-| `openrouter.api_base` | endpoint (key comes from `$OPENROUTER_API_KEY`, never stored) |
+| `internal.{host,scheme,api_key_env,reasoning,decode,ports,aliases}` | internal model servers; a bare port (or alias) selects one |
+| `openrouter.api_base` | fallback endpoint (key comes from `$OPENROUTER_API_KEY`, never stored) |
 | `linux_src`, `build_script`, `config_fragment`, `run_scripts_dir`, `cross_compile`, `arch` | kernel tree + build |
 | `deploy_image_name` | name the Image is given on the remote |
 | `ssh.{host,user,port,guest_ssh_port,remote_qemu_dir}` | remote QEMU host (default `rpi4pmu.local`) |
