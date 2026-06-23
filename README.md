@@ -10,6 +10,16 @@ the result under QEMU on a remote host.
 
 ---
 
+## Why "microagent"
+
+The name is a standing constraint, not a label. The **"micro"** is a goal: the code stays **small,
+compact, and generalized** — a tight harness rather than a sprawling framework. Capability is added
+by making existing tools and the loop more general, not by piling on special-case code. Whenever a
+change can be expressed as fewer, more general lines, it should be. If the project ever stops being
+*micro*, it has drifted from its purpose.
+
+---
+
 ## Goal
 
 Give an LLM a tight, dependency-free harness in which it can actually *do kernel work*: read and
