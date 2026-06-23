@@ -97,7 +97,7 @@ def run(session, console):
     console.banner(llm.model_label(session.cfg.model))
     while True:
         try:
-            line = input(P.paint("\nmicroag › ", P.GOLD, bold=True))
+            line = input(P.paint("\nmicroagent › ", P.GOLD, bold=True))
         except EOFError:
             break
         except KeyboardInterrupt:

@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 import yaml
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # /amd4/microag
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # /amd4/microagent
 DEFAULT_CONFIG_PATH = os.path.join(ROOT, "config.yaml")
 
 
@@ -66,7 +66,7 @@ class Config:
     run_scripts_dir: str = "/amd4/cpu/ebpf"
     cross_compile: str = "aarch64-linux-gnu-"
     arch: str = "arm64"
-    deploy_image_name: str = "Image-microag"     # name the Image is given on the remote
+    deploy_image_name: str = "Image-microagent"     # name the Image is given on the remote
 
     # Remote / safety / TUI
     ssh: SSHConfig = field(default_factory=SSHConfig)
@@ -135,7 +135,7 @@ def load(path: str | None = None) -> Config:
         run_scripts_dir=raw.get("run_scripts_dir", "/amd4/cpu/ebpf"),
         cross_compile=raw.get("cross_compile", "aarch64-linux-gnu-"),
         arch=raw.get("arch", "arm64"),
-        deploy_image_name=raw.get("deploy_image_name", "Image-microag"),
+        deploy_image_name=raw.get("deploy_image_name", "Image-microagent"),
         ssh=_coerce_ssh(raw.get("ssh")),
         autonomy=_coerce_autonomy(raw.get("autonomy")),
         show_thinking=bool(tui.get("show_thinking", True)),

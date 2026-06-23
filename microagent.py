@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""microag — a stdlib-only Linux-kernel coding agent.
+"""microagent — a stdlib-only Linux-kernel coding agent.
 
 Usage:
-    python3 microag.py                      # interactive REPL
-    python3 microag.py -p "do X"            # one-shot (non-interactive) then exit
-    python3 microag.py --model opus --effort high
-    python3 microag.py --tree /path/to/linux-src
+    python3 microagent.py                      # interactive REPL
+    python3 microagent.py -p "do X"            # one-shot (non-interactive) then exit
+    python3 microagent.py --model opus --effort high
+    python3 microagent.py --tree /path/to/linux-src
 
 Needs $OPENROUTER_API_KEY in the environment. No pip install, no requirements.txt —
 only the Python stdlib plus already-present requests/PyYAML/pexpect/colorama.
@@ -30,7 +30,7 @@ from tui import repl, palette                       # noqa: E402
 
 
 def main():
-    ap = argparse.ArgumentParser(prog="microag",
+    ap = argparse.ArgumentParser(prog="microagent",
                                  description="stdlib-only Linux-kernel coding agent")
     ap.add_argument("-p", "--prompt", help="run a single task then exit (non-interactive)")
     ap.add_argument("--model", help="model alias (deepseek, opus, kimi, glm, or a full id)")

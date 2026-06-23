@@ -42,7 +42,7 @@ against the `noble.img` rootfs; serial → `console.log`; ssh forwarded host `:2
 - Verify: `ssh -p 2222 ubuntu@localhost 'uname -r'` (reached via the host → double hop).
 - The virtual PMU (`pmu=on`) exposes PMUv3 in the guest for `perf`/bpftrace `hardware:*` events.
 
-### microag tool mapping
+### microagent tool mapping
 - `build_linux` → incremental `make` (or reconfigure=true → build-pi4.sh)
 - `kconfig` → scripts/config + olddefconfig
 - `trace_build` → toolchain + `make -n` (what's actually run)

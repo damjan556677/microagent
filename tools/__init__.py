@@ -1,1 +1,1 @@
-"""microag built-in tools: fs, search, nav (clangd), shell, codeindex, kernel."""
+"""microagent built-in tools: fs, search, nav (clangd), shell, codeindex, kernel."""

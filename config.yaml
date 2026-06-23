@@ -1,4 +1,4 @@
-# microag configuration. NO secrets here — OPENROUTER_API_KEY is read from the environment.
+# microagent configuration. NO secrets here — OPENROUTER_API_KEY is read from the environment.
 # Anything in here can be overridden at runtime via slash-commands (/model, /effort, /cd).
 
 model: deepseek            # alias resolved by agent/llm.py model registry (swap to opus-4.8 / kimi)
@@ -18,7 +18,7 @@ config_fragment: /amd4/cpu/ebpf/kernel/pi4-ebpf.cfg
 run_scripts_dir: /amd4/cpu/ebpf
 cross_compile: aarch64-linux-gnu-
 arch: arm64
-deploy_image_name: Image-microag   # name the built Image is given on the remote
+deploy_image_name: Image-microagent   # name the built Image is given on the remote
 
 # Remote host that runs QEMU. Build happens locally; the Image is scp'd here and booted.
 ssh:

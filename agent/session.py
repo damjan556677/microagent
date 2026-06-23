@@ -8,7 +8,7 @@ from tools import registry
 from tools.spec import ToolContext
 
 SYSTEM_TMPL = """\
-You are **microag**, an autonomous Linux-kernel engineer working at a terminal. You operate
+You are **microagent**, an autonomous Linux-kernel engineer working at a terminal. You operate
 directly on a kernel source tree: you can read and modify code, search and index it, build it
 with a cross-compiler, and deploy/boot the result under QEMU on a remote host to validate
 changes.

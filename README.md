@@ -1,4 +1,4 @@
-# microag
+# microagent
 
 A small, **self-contained** terminal coding agent that drives a large language model through a set
 of built-in tools to **navigate, optimize, build, and deploy a Linux kernel** — entirely from the
@@ -44,10 +44,10 @@ Two things shaped the design:
 git clone https://github.com/damjan556677/microagent && cd microagent
 export OPENROUTER_API_KEY=sk-or-...
 
-python3 microag.py                                   # interactive REPL
-python3 microag.py -p "explain how this kernel image is built"   # one-shot, then exit
-python3 microag.py --model opus --effort high        # pick model / reasoning effort
-python3 microag.py --tree /path/to/linux-src         # point at a different kernel tree
+python3 microagent.py                                   # interactive REPL
+python3 microagent.py -p "explain how this kernel image is built"   # one-shot, then exit
+python3 microagent.py --model opus --effort high        # pick model / reasoning effort
+python3 microagent.py --tree /path/to/linux-src         # point at a different kernel tree
 ```
 
 Flags: `--model`, `--effort {low|medium|high}`, `--tree PATH`, `--no-thinking`, `--no-color`,
@@ -84,7 +84,7 @@ tool by appending to a module's `TOOLS` list (and `registry._MODULES` for a new 
 ## Architecture
 
 ```
-microag.py        entry: argparse, REPL vs one-shot, UTF-8 stdout
+microagent.py        entry: argparse, REPL vs one-shot, UTF-8 stdout
 config.yaml       model, ssh target, kernel paths, gating, tui
 agent/
   config.py       YAML + env (OPENROUTER_API_KEY) -> typed Config
@@ -173,7 +173,7 @@ Everything is overridable at runtime via flags or slash-commands.
 
 ## How it was built (the plan)
 
-microag reuses *patterns* from an existing LiteLLM/Rich agent (`ebpf-opt4`) — the turn loop, the
+microagent reuses *patterns* from an existing LiteLLM/Rich agent (`ebpf-opt4`) — the turn loop, the
 normalized event model, the tool registry/dispatch, tool-call-markup recovery, and the warm palette —
 but reimplements them dependency-free, and targets the build/deploy flow of a Linux 6.8 Raspberry-Pi
 4 tree. Build order: config + events → OpenRouter client → core tools (fs/search/shell) → TUI + entry

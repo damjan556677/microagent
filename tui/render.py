@@ -171,7 +171,7 @@ class Console:
     def banner(self, model_label: str):
         w = min(_term_width(), 78)
         self.line()
-        self.line(P.paint("  microag ", P.GOLD, bold=True) +
+        self.line(P.paint("  microagent ", P.GOLD, bold=True) +
                   P.paint("· stdlib kernel agent", P.DIM))
         self.line(P.paint(f"  model {model_label}   tree {self.cfg.active_dir}", P.DIM))
         self.line(P.paint(f"  ssh {self.cfg.ssh.target}   effort {self.cfg.reasoning_effort}", P.DIM))

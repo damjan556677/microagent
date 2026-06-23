@@ -1,4 +1,4 @@
-# microag — iterative optimization log
+# microagent — iterative optimization log
 
 Model under test: `deepseek-v4-pro` (default). Each row: task · observation · change · before→after.
 

@@ -141,8 +141,8 @@ def _headers(cfg) -> dict:
     return {
         "Authorization": f"Bearer {cfg.api_key}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://localhost/microag",
-        "X-Title": "microag",
+        "HTTP-Referer": "https://localhost/microagent",
+        "X-Title": "microagent",
     }
 
 

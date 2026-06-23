@@ -1,1 +1,1 @@
-"""microag agent core: config, events, LLM client, history, loop."""
+"""microagent agent core: config, events, LLM client, history, loop."""
