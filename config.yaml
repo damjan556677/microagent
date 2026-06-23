@@ -1,0 +1,49 @@
+# microag configuration. NO secrets here — OPENROUTER_API_KEY is read from the environment.
+# Anything in here can be overridden at runtime via slash-commands (/model, /effort, /cd).
+
+model: deepseek            # alias resolved by agent/llm.py model registry (swap to opus-4.8 / kimi)
+reasoning_effort: high     # OpenRouter unified reasoning effort: low | medium | high  ("max" == high)
+max_turns: 60              # hard cap on agent turns per task
+nudge: 2                   # max finish-the-job re-prompts before giving up (0 disables)
+temperature: 0.3
+
+openrouter:
+  api_base: https://openrouter.ai/api/v1
+  # api_key is taken from $OPENROUTER_API_KEY (never stored in this file)
+
+# The Linux kernel tree the agent works on (build is local; QEMU is remote).
+linux_src: /amd4/cpu/ebpf/linux-6.8-pi
+build_script: /amd4/cpu/ebpf/kernel/build-pi4.sh
+config_fragment: /amd4/cpu/ebpf/kernel/pi4-ebpf.cfg
+run_scripts_dir: /amd4/cpu/ebpf
+cross_compile: aarch64-linux-gnu-
+arch: arm64
+deploy_image_name: Image-microag   # name the built Image is given on the remote
+
+# Remote host that runs QEMU. Build happens locally; the Image is scp'd here and booted.
+ssh:
+  host: rpi4pmu.local
+  user: ubuntu
+  port: 22
+  guest_ssh_port: 2222     # host-forwarded port into the QEMU guest (ssh -p 2222 ubuntu@localhost)
+  remote_qemu_dir: qemu-pmu  # dir on the remote holding run-vm-*.sh + kernel images
+
+# Autonomy / safety. The agent runs everything without asking EXCEPT commands matching the
+# destructive patterns below, which always require explicit confirmation (raw-disk flashing).
+autonomy:
+  gate_disk_flashing: true
+  destructive_patterns:
+    - '(^|\s)dd\s'
+    - '(^|\s)mkfs(\.|\s)'
+    - '(^|\s)parted(\s|$)'
+    - '(^|\s)sgdisk(\s|$)'
+    - '(^|\s)wipefs(\s|$)'
+    - '/dev/sd[a-z]'
+    - '/dev/mmcblk'
+    - 'of=/dev/'
+
+tui:
+  show_thinking: true
+  spinner_hz: 10
+
+knowledge_pack: knowledge/linux_pi_build.md
