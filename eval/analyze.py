@@ -40,7 +40,8 @@ def analyze(path):
             dups += 1
     return {
         "file": os.path.basename(path),
-        "task": (start.get("task", "") or "")[:58],
+        "model": (start.get("model", "") or ""),
+        "task": (start.get("task", "") or "")[:46],
         "tools": summ.get("tool_calls", len(calls)),
         "fails": summ.get("tool_failures", len(fails)),
         "dups": dups,
@@ -61,13 +62,13 @@ def main(argv):
         paths += sorted(glob.glob(os.path.join(a, "*.jsonl"))) if os.path.isdir(a) else [a]
     if not paths:
         print("no logs found"); return
-    hdr = f"{'file':<14}{'tools':>6}{'fail':>5}{'dup':>5}{'tok':>9}{'ctx%':>6}{'reason':>9}{'wall_s':>8}  task"
+    hdr = f"{'file':<12}{'model':<22}{'tools':>6}{'fail':>5}{'dup':>5}{'tok':>9}{'ctx%':>6}{'reason':>8}  task"
     print(hdr); print("-" * len(hdr))
     tot_fail = 0
     for p in paths:
         r = analyze(p); tot_fail += r["fails"] or 0
-        print(f"{r['file']:<14}{str(r['tools']):>6}{str(r['fails']):>5}{str(r['dups']):>5}"
-              f"{str(r['tok']):>9}{str(r['ctx_pct']):>6}{str(r['reason']):>9}{str(r['wall_s']):>8}  {r['task']}")
+        print(f"{r['file']:<12}{r['model'][:21]:<22}{str(r['tools']):>6}{str(r['fails']):>5}{str(r['dups']):>5}"
+              f"{str(r['tok']):>9}{str(r['ctx_pct']):>6}{str(r['reason']):>8}  {r['task']}")
         for m in r["fail_msgs"]:
             print(f"      ✗ {m}")
     print(f"\ntotal tool failures across suite: {tot_fail}")
