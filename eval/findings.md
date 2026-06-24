@@ -49,3 +49,32 @@ no-answer → answered.** F16 (edit_file whitespace tolerance) → open (low).
 **F13 (#28) → investigated:** prompt_tokens == sum of per-turn context (no caching); vLLM prefix
 caching is server-side and wouldn't change the reported token count, so there's no client-side fix —
 the real lever (fewer turns) is done via the loop guardrails. Closing as not-actionable-in-client.
+
+## Run: disc-20260624-132631 (6 HARD tasks) — Round-2 fixes HELD; new findings
+Validated under load: all 6 deep tasks ended `stop`, NO max_turns/give-up loops; answers verified
+CORRECT & grounded (citations cross-checked vs actual reads); task-06 found a REAL double-free in
+`udk_virtblk_probe` (refcnt callback re-frees tag_set/vqs already freed on the probe error path).
+- **G1 (correctness, HIGH):** hallucinated/synthesized citations on deep+truncated reads — task-05
+  quoted freelists.c "buddy" code it never paged to (read truncated at 100 lines); task-01/03
+  asserted inferences as fact. → prompt: cite only lines actually read; page truncated reads before
+  quoting; mark inferences. [task #29]
+- **G2 (tool-misuse, MED, recurring):** `glob` rejects `path=` kwarg (R3 t02/t03, R1 t08). → add
+  `path` to glob_files. [task #30]
+- **G3 (efficiency, MED):** header-first search thrashing — t02 13/39 searches empty (`*.h` for
+  symbols in `.c`); ~11-call wrong-tree detour. → prompt: symbol-def search no-glob/.c first.
+- **G4 (tool-misuse, LOW):** `search` errors when `path` is a FILE → degrade to single-file grep.
+- **G5 (efficiency, LOW):** 8003/82K tightest ctx margin (42.6% peak; ~103 calls would hit a guard).
+- **G6 (tooling, LOW):** analyze.py should surface peak ctx% + max single Ctx delta from Ctx events.
+- POSITIVE: deep traces converged & were grounded; bug-hunt sound; Round-2 guardrails held.
+
+## Run: build-r1 (subagent-driven, single BUILD task, 8006) — microagent BUILT the kernel ✓
+microagent ran `qemu_overlay_proc_enabled/build_qemu_image.sh` and produced a verified
+`bootimage.elf` (10.5 MB, sha256) in 8 calls / 65K tok — set `timeout=1800`, didn't short-circuit
+the stale image, verified the fresh artifact. Two HIGH latent bugs (hidden only because the task
+pre-hinted the timeout and the verdict happened to survive truncation):
+- **B1 (missing-capability, HIGH) → FIXED:** `run` default timeout 600s < real build 895s (an
+  unguided build gets KILLED), and `TimeoutExpired` DISCARDED all partial output (opaque). Fix
+  (shell.py): default → 1800s; on timeout, capture partial output + "retry with a larger timeout".
+- **B2 (tool-misuse, HIGH) → FIXED:** middle-truncation (`MAX_OUTPUT=8000`) could hide a `gcc error`
+  in the dropped middle → false "success". Fix (shell.py): `run` output is now tail-biased and
+  surfaces error/warning lines from the omitted middle (verified: a buried `gcc: error` is surfaced).
