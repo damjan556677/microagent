@@ -59,7 +59,10 @@ def main(argv):
         argv = [runs[-1]] if runs else []
     paths = []
     for a in argv:
-        paths += sorted(glob.glob(os.path.join(a, "*.jsonl"))) if os.path.isdir(a) else [a]
+        if os.path.isdir(a):                       # recurse so a matrix group dir (model subdirs) works
+            paths += sorted(glob.glob(os.path.join(a, "**", "*.jsonl"), recursive=True))
+        else:
+            paths.append(a)
     if not paths:
         print("no logs found"); return
     hdr = f"{'file':<12}{'model':<22}{'tools':>6}{'fail':>5}{'dup':>5}{'tok':>9}{'ctx%':>6}{'reason':>8}  task"
