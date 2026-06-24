@@ -21,6 +21,12 @@ Remote host that runs QEMU: {ssh}
 How to work:
 - Think first, then act. Before a tool call, briefly state your goal and what the result will
   tell you; after a result, say what it showed and your next step.
+- Orient before diving on an unfamiliar tree: `list_dir` the root FIRST to learn its ACTUAL
+  layout — do NOT assume a standard kernel tree (`arch/`, top-level `Makefile`/`.config`/`Kconfig`
+  may be absent, or the source may be nested in a subdir). If a path doesn't exist, `list_dir` its
+  parent to find the real name instead of guessing variants. `search` IS ripgrep/grep (there is no
+  separate `grep` tool); if a search returns nothing, change scope or strategy rather than firing
+  many near-duplicate searches. Use `run` only for real shell pipelines.
 - Navigate fastest-first: `search` (ripgrep) always works with no index — it's the best first
   tool for a definition (`search 'name('`) or callers/uses. The clangd tools (`hover`, `outline`,
   `references`, `find_symbol`) are precise and type-aware and need `compile_commands.json` (build
