@@ -62,3 +62,24 @@ Model under test: `deepseek-v4-pro` (default). Each row: task · observation · 
 - **Remaining backlog:** optional history compaction for very long sessions; reduce chattiness on
   multi-option `kconfig get` (batch); clangd background-index warmup is slow on a cold kernel
   (search covers it meanwhile).
+
+## Iteration 6 — multi-model discovery loop on a foreign tree (HongMeng, non-mainline)
+Driven by the `eval/` harness (run on a remote box inside a real **non-Kbuild** kernel tree —
+`hm-verif-kernel`, no top-level Makefile, `arch` not a dir, CMake/Yocto build), across 4 models
+(8006/8007/8002/8003 = auto/sse/json, 1M↓82K ctx) with JSONL session logs + subagent analysis.
+Full evidence in [`eval/findings.md`](eval/findings.md).
+- **Observation (discovery, 8 diverse tasks):** the agent assumed a mainline layout and flailed —
+  speculative-search storms, path-guessing deep in the tree, `read_file` on directories,
+  shelling out to `run grep/find`, a silent `glob {c,h}` bug, and a clangd-nav task that looped
+  editing a synthesized `compile_commands.json` to **`max_turns` with no answer** (65 calls / 978K tok).
+- **Changes (Round-2 batch):** prompt — orient-first hardening (derive paths from observed entries;
+  no mid-tree guessing; prefer native `search`/`glob`/`kconfig` over `run grep/find`; unanchored-first;
+  batch read-only calls; fall back to `search` and never hand-build a CDB) + host tool-capability
+  summary. tools — `fs.glob` brace-expansion, `read_file`-on-dir auto-lists, `search` errors on bad
+  path + `--no-ignore`. loop — give-up nudge on repeats/failures + forced final answer on `max_turns`.
+  nav — reload clangd after a new CDB, actionable no-Makefile message, steer empty results to `search`.
+- **Result (same 8 tasks, before → after):** tool calls **253 → 194 (−23%)**, failures **6 → 1 (−83%)**,
+  tokens **~2.44M → ~1.01M (−59%)**, `max_turns` deaths **1 → 0**; every task ends `stop`. The clangd
+  task: **65→11 calls, 978K→40K tok, no-answer → answered.** ✓
+- **Note:** the "build-task token monster" is quadratic context re-send (no prompt caching), not agent
+  waste — final ctx stayed <25%; the real lever is fewer turns (done), not terser output.

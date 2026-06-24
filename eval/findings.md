@@ -40,3 +40,12 @@ and surfaced most of the high-severity items. task-07 (file counts, 4 calls) is 
   turn (4 calls total, 11K tok); cuts the turn-count multiplier that drives token cost.
 - **`find … | wc -l` + `for d in */ … sort -rn | head`** is the right idiom for "how many / which dir".
 - orient-first `list_dir` root and citation discipline (t04: all file:line verified) are working.
+
+## Status — Round-2 batch applied & validated (commits aea8c6a, 4b99a6f, f9c34dd)
+F1–F12, F14, F15 → **fixed**. Re-ran the same 8 discovery tasks on the patched code (disc-20260624-131639):
+tool calls **253→194 (−23%)**, failures **6→1 (−83%)**, tokens **~2.44M→~1.01M (−59%)**, `max_turns`
+deaths **1→0**; all tasks end `stop`. The clangd-nav disaster (t08): **65→11 calls, 978K→40K tok,
+no-answer → answered.** F16 (edit_file whitespace tolerance) → open (low). 
+**F13 (#28) → investigated:** prompt_tokens == sum of per-turn context (no caching); vLLM prefix
+caching is server-side and wouldn't change the reported token count, so there's no client-side fix —
+the real lever (fewer turns) is done via the loop guardrails. Closing as not-actionable-in-client.
