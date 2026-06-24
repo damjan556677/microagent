@@ -1,8 +1,35 @@
-# microagent eval suite — generic, tree-agnostic kernel-exploration tasks.
-# One task per line; blank lines and lines starting with '#' are ignored.
-# Each task runs as a fresh one-shot (`-p`) so per-task metrics are isolated.
-What kernel probe mechanisms (kprobes, uprobes, tracepoints, ftrace) are available in this tree? Cite the key files.
-Find the definition of kmalloc and a few of its callers. Cite file:line for each.
-Summarize how the top-level build produces the kernel image — which Makefile targets and steps are involved.
-List the BPF-related CONFIG options in this tree and whether each is enabled.
-Describe the top-level directory layout of this tree in a few lines.
+# microagent eval suite — a DIVERSE pool of READ-ONLY kernel-exploration tasks.
+# run_matrix.sh shards these across models by default (each model runs a different slice,
+# concurrently) for broad discovery; MODE=mirror runs ALL tasks on EVERY model to verify a fix.
+# Keep tasks READ-ONLY — the agent runs against the user's real tree; no edits/builds that mutate it.
+
+# --- orientation / layout ---
+Map the top-level layout of this tree and identify the actual kernel source root (it may be nested). How does the structure differ from a mainline Linux tree?
+Where do architecture-specific sources live in this tree, and which architectures are supported? Cite directories.
+
+# --- symbol navigation ---
+Find the definition of the primary memory allocator (kmalloc or its equivalent) and three callers. Cite file:line for each.
+Locate the system-call entry/dispatch path and name the key files and functions.
+Find the main task/thread descriptor struct and summarize its key fields in a few lines.
+
+# --- cross-reference / tracing ---
+Pick a core scheduler function and trace one of its callees two levels deep, citing file:line at each step.
+Find every use of one tree-specific macro or annotation (e.g. an export or section macro) and explain what it does.
+
+# --- subsystem comprehension ---
+Summarize what the scheduling subsystem does in this kernel and where its code lives.
+Summarize the memory-management subsystem: its main directories, allocators, and entry points.
+Describe the probe/tracing mechanism this kernel provides and how it differs from Linux kprobes/ftrace.
+
+# --- config / build ---
+What defconfig or .config files exist, and what do they enable for tracing and BPF? Use counts, not full dumps.
+How is this kernel built? Find the build entry point(s) or scripts — there may be no top-level Makefile.
+Build the code navigation index for this tree (build_index) and report exactly what succeeded or failed and why.
+
+# --- quantitative / economy ---
+How many .c and .h files are in this tree, and which directory holds the most source? Answer with counts, not file dumps.
+Identify the largest source file in the tree and summarize, in two sentences, what it implements.
+
+# --- semantic nav / open-ended ---
+Use the clangd tools (outline/hover) on a representative source file; if clangd is unavailable, fall back to search and say so.
+Name the top three ways this kernel diverges from mainline Linux, with concrete file evidence for each.
