@@ -67,6 +67,10 @@ def run(cfg, ctx, messages, tools_schema, dispatch, max_turns=None, nudge=None):
     usage_tot = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0.0}
     max_ctx = llm.resolve_endpoint(cfg).max_ctx     # context window of the active endpoint (0 = unknown)
     state: dict = {}
+    call_count: dict = {}        # (name, args) -> times issued; catches repeat-the-same-call loops
+    fails_total = 0
+    stuck_nudges = 0
+    STUCK_CAP = 2
 
     for _turn in range(cap):
         yield Status("thinking")
@@ -111,5 +115,32 @@ def run(cfg, ctx, messages, tools_schema, dispatch, max_turns=None, nudge=None):
             yield ToolResult(tc.id, tc.name, result, ok=ok)
             messages.append(history.tool_result_msg(tc.id, tc.name, result))
             _update_state(state, tc.name, args, result, ok)
+            call_count[(tc.name, tc.arguments)] = call_count.get((tc.name, tc.arguments), 0) + 1
+            if not ok:
+                fails_total += 1
 
+        # Give-up guardrail: don't let the model spin on repeated calls / piling-up failures.
+        if stuck_nudges < STUCK_CAP and (fails_total >= 6 or max(call_count.values(), default=0) >= 3):
+            stuck_nudges += 1
+            txt = ("You appear stuck — repeating the same call or accumulating failures without "
+                   "progress. STOP retrying the same approach: switch tools (e.g. fall back to "
+                   "`search`), or if you already have enough, give your final answer now.")
+            yield Nudge(txt)
+            messages.append({"role": "user", "content": txt})
+            call_count.clear(); fails_total = 0
+
+    # Out of turns: force a final answer instead of terminating on a dangling tool result.
+    messages.append({"role": "user", "content": (
+        "Step limit reached. Do NOT call any more tools. Give your best final answer now from what "
+        "you've gathered, and note anything you couldn't determine.")})
+    yield Status("thinking")
+    fin = None
+    for item in llm.stream_complete(cfg, messages, tools=None):   # tools=None -> the model must answer
+        if isinstance(item, Completion):
+            fin = item
+        else:
+            yield item
+    if fin and not fin.error:
+        _accum(usage_tot, fin.usage)
+        messages.append(history.assistant_dict(llm.strip_markup(fin.content), []))
     yield Done(usage=usage_tot, reason="max_turns")
