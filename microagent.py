@@ -39,6 +39,7 @@ def main():
     ap.add_argument("--no-thinking", action="store_true", help="hide the reasoning stream")
     ap.add_argument("--no-color", action="store_true", help="disable ANSI color")
     ap.add_argument("--config", help="path to a config.yaml")
+    ap.add_argument("--log", help="write a structured JSONL session log to this path (for eval)")
     a = ap.parse_args()
 
     cfg = config.load(a.config)
@@ -70,9 +71,9 @@ def main():
     try:
         if a.prompt:
             # one-shot: non-interactive, so gated destructive commands are auto-denied.
-            Session(cfg, console, confirm=None).ask(a.prompt)
+            Session(cfg, console, confirm=None, log_path=a.log).ask(a.prompt)
         else:
-            session = Session(cfg, console, confirm=repl.make_confirm(console))
+            session = Session(cfg, console, confirm=repl.make_confirm(console), log_path=a.log)
             repl.run(session, console)
     finally:
         console.close()

@@ -23,6 +23,8 @@ _RELEASE_RE = re.compile(r"^\d+\.\d+\.\d+\S*$")
 
 
 def _local(cmd, cwd=None, timeout=600, env=None, shell=False):
+    if cwd and not os.path.isdir(cwd):
+        return 127, f"(error: working directory not found: {cwd})"
     try:
         p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
                            timeout=timeout, errors="replace", env=env, shell=shell)

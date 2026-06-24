@@ -65,6 +65,8 @@ def build_index(ctx, what: str = "compile_commands", timeout: int = 1200) -> str
     clangd needs) | cscope | tags | all. cscope/tags scan the whole kernel and are SLOW."""
     cfg = ctx.cfg
     root = cfg.active_dir
+    if not os.path.isdir(root):
+        return f"(error: working directory not found: {root})"
     if not os.path.exists(os.path.join(root, "Makefile")):
         return f"(error: {root} has no Makefile — not a kernel tree?)"
     want = ["cscope", "tags", "compile_commands"] if what == "all" else [what]

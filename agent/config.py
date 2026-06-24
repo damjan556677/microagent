@@ -15,7 +15,7 @@ DEFAULT_CONFIG_PATH = os.path.join(ROOT, "config.yaml")
 
 @dataclass
 class SSHConfig:
-    host: str = "rpi4pmu"
+    host: str = ""              # remote QEMU host (project-specific; set in config.yaml)
     user: str = "ubuntu"
     port: int = 22
     guest_ssh_port: int = 2222           # host-forwarded port into the QEMU guest
@@ -127,13 +127,14 @@ class Config:
     api_key: str = ""                                # OpenRouter key, from $OPENROUTER_API_KEY
     internal: "InternalConfig" = field(default_factory=InternalConfig)
 
-    # Kernel tree / build
-    linux_src: str = "/amd4/cpu/ebpf/linux-6.8-pi"
-    build_script: str = "/amd4/cpu/ebpf/kernel/build-pi4.sh"
-    config_fragment: str = "/amd4/cpu/ebpf/kernel/pi4-ebpf.cfg"
-    run_scripts_dir: str = "/amd4/cpu/ebpf"
-    cross_compile: str = "aarch64-linux-gnu-"
-    arch: str = "arm64"
+    # Kernel tree / build — all project-specific; empty by default (set in config.yaml).
+    # active_dir falls back to the current working directory when linux_src is unset/absent.
+    linux_src: str = ""
+    build_script: str = ""
+    config_fragment: str = ""
+    run_scripts_dir: str = ""
+    cross_compile: str = ""        # e.g. aarch64-linux-gnu-  (empty => native build)
+    arch: str = ""                 # e.g. arm64               (empty => host arch)
     deploy_image_name: str = "Image-microagent"     # name the Image is given on the remote
 
     # Remote / safety / TUI
@@ -141,7 +142,7 @@ class Config:
     autonomy: AutonomyConfig = field(default_factory=AutonomyConfig)
     show_thinking: bool = True
     spinner_hz: int = 10
-    knowledge_pack: str = "knowledge/linux_pi_build.md"
+    knowledge_pack: str = ""       # optional project build/deploy reference for the system prompt
 
     # Runtime state (not from YAML)
     root: str = ROOT
@@ -149,7 +150,9 @@ class Config:
 
     def __post_init__(self):
         if not self.active_dir:
-            self.active_dir = self.linux_src
+            # Default to the configured kernel tree, but fall back to the current working
+            # directory when it's absent (e.g. running on another host) so tools "just work".
+            self.active_dir = self.linux_src if os.path.isdir(self.linux_src) else os.getcwd()
 
     # --- derived paths -------------------------------------------------------
     @property
@@ -162,7 +165,7 @@ class Config:
 def _coerce_ssh(d: dict) -> SSHConfig:
     d = d or {}
     return SSHConfig(
-        host=d.get("host", "rpi4pmu"),
+        host=d.get("host", ""),
         user=d.get("user", "ubuntu"),
         port=int(d.get("port", 22)),
         guest_ssh_port=int(d.get("guest_ssh_port", 2222)),
@@ -234,18 +237,18 @@ def load(path: str | None = None) -> Config:
         api_base=openrouter.get("api_base", "https://openrouter.ai/api/v1"),
         api_key=os.environ.get("OPENROUTER_API_KEY", ""),
         internal=_coerce_internal(raw.get("internal")),
-        linux_src=raw.get("linux_src", "/amd4/cpu/ebpf/linux-6.8-pi"),
-        build_script=raw.get("build_script", "/amd4/cpu/ebpf/kernel/build-pi4.sh"),
-        config_fragment=raw.get("config_fragment", "/amd4/cpu/ebpf/kernel/pi4-ebpf.cfg"),
-        run_scripts_dir=raw.get("run_scripts_dir", "/amd4/cpu/ebpf"),
-        cross_compile=raw.get("cross_compile", "aarch64-linux-gnu-"),
-        arch=raw.get("arch", "arm64"),
+        linux_src=raw.get("linux_src", ""),
+        build_script=raw.get("build_script", ""),
+        config_fragment=raw.get("config_fragment", ""),
+        run_scripts_dir=raw.get("run_scripts_dir", ""),
+        cross_compile=raw.get("cross_compile", ""),
+        arch=raw.get("arch", ""),
         deploy_image_name=raw.get("deploy_image_name", "Image-microagent"),
         ssh=_coerce_ssh(raw.get("ssh")),
         autonomy=_coerce_autonomy(raw.get("autonomy")),
         show_thinking=bool(tui.get("show_thinking", True)),
         spinner_hz=int(tui.get("spinner_hz", 10)),
-        knowledge_pack=raw.get("knowledge_pack", "knowledge/linux_pi_build.md"),
+        knowledge_pack=raw.get("knowledge_pack", ""),
     )
     # "max" is an accepted synonym for the highest effort tier OpenRouter exposes.
     if cfg.reasoning_effort.lower() in ("max", "maximum"):

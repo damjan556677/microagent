@@ -155,6 +155,8 @@ def _client(ctx):
         return None
     cache = ctx.extra.setdefault("clangd", {})
     root = ctx.cfg.active_dir
+    if not os.path.isdir(root):
+        return None
     cli = cache.get(root)
     if cli is None or not cli._alive:
         try:

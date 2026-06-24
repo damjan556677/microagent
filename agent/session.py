@@ -3,7 +3,8 @@ exposes `ask(task)` used by both the REPL and one-shot mode.
 """
 import os
 
-from . import loop
+from . import loop, llm
+from .sessionlog import SessionLogger
 from tools import registry
 from tools.spec import ToolContext
 
@@ -44,10 +45,13 @@ How to work:
 
 
 def build_system_prompt(cfg) -> str:
-    base = SYSTEM_TMPL.format(tree=cfg.active_dir, arch=cfg.arch,
-                             cross=cfg.cross_compile, ssh=cfg.ssh.target)
+    base = SYSTEM_TMPL.format(
+        tree=cfg.active_dir,
+        arch=cfg.arch or "(host)",
+        cross=cfg.cross_compile or "(native)",
+        ssh=cfg.ssh.target if cfg.ssh.host else "(none configured)")
     kp = cfg.knowledge_pack_path
-    if os.path.exists(kp):
+    if cfg.knowledge_pack and os.path.isfile(kp):
         try:
             base += "\n\n# Build/deploy reference (this tree)\n" + open(kp).read()
         except Exception:
@@ -56,11 +60,12 @@ def build_system_prompt(cfg) -> str:
 
 
 class Session:
-    def __init__(self, cfg, console, confirm=None):
+    def __init__(self, cfg, console, confirm=None, log_path=None):
         self.cfg = cfg
         self.console = console
         self.ctx = ToolContext(cfg=cfg, confirm=confirm)
         self.messages = [{"role": "system", "content": build_system_prompt(cfg)}]
+        self.logger = SessionLogger(log_path) if log_path else None
 
     def refresh_system(self):
         self.messages[0] = {"role": "system", "content": build_system_prompt(self.cfg)}
@@ -71,7 +76,13 @@ class Session:
     def ask(self, task: str):
         """Run one task to completion, rendering events as they stream."""
         self.messages.append({"role": "user", "content": task})
+        if self.logger:
+            self.logger.start(task, llm.current_label(self.cfg))
         counters: dict = {}
         for ev in loop.run(self.cfg, self.ctx, self.messages,
                            registry.tools_for(), registry.dispatch):
+            if self.logger:
+                self.logger.event(ev)
             self.console.render_event(ev, counters)
+        if self.logger:
+            self.logger.finish(self.messages)

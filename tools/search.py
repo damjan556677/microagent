@@ -11,6 +11,8 @@ from .spec import schema, truncate
 
 
 def _run(cmd, cwd, timeout=60):
+    if cwd and not os.path.isdir(cwd):
+        return 127, f"(working directory not found: {cwd})"
     try:
         p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
                            timeout=timeout, errors="replace")
@@ -18,7 +20,7 @@ def _run(cmd, cwd, timeout=60):
     except subprocess.TimeoutExpired:
         return 124, "(search timed out)"
     except FileNotFoundError as e:
-        return 127, f"(missing binary: {e})"
+        return 127, f"(missing binary: {e})"   # cwd validated above, so this is the executable
     except Exception as e:
         return 1, f"(search error: {e})"
 

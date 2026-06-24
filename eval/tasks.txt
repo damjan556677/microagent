@@ -1,0 +1,8 @@
+# microagent eval suite — generic, tree-agnostic kernel-exploration tasks.
+# One task per line; blank lines and lines starting with '#' are ignored.
+# Each task runs as a fresh one-shot (`-p`) so per-task metrics are isolated.
+What kernel probe mechanisms (kprobes, uprobes, tracepoints, ftrace) are available in this tree? Cite the key files.
+Find the definition of kmalloc and a few of its callers. Cite file:line for each.
+Summarize how the top-level build produces the kernel image — which Makefile targets and steps are involved.
+List the BPF-related CONFIG options in this tree and whether each is enabled.
+Describe the top-level directory layout of this tree in a few lines.
