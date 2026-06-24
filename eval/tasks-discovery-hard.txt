@@ -1,0 +1,8 @@
+# Harder discovery pool — deeper multi-hop reasoning / judgment, to surface the next tier of
+# weaknesses now that the basic exploration tasks run clean. READ-ONLY. run_discovery.sh fans out.
+Trace the full path from a user-space system call to the scheduler context switch — name each function and file:line along the way.
+Identify this kernel's inter-process messaging/IPC mechanism and trace one message from send to receive across files, citing file:line.
+Explain the locking discipline of the memory allocator: which locks protect what, and in what order they're taken. Cite the code.
+How are interrupts registered and dispatched in this kernel? Find the IRQ chip / handler registration and the dispatch path, with file:line.
+Compare two allocation paths in this kernel (e.g. slab vs page/large allocation) and explain when each is used, citing the deciding code.
+Examine one driver or subsystem init path and flag a plausible error-handling or resource-leak gap, explaining the scenario with file:line.
