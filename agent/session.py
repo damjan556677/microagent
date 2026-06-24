@@ -60,6 +60,9 @@ How to work:
 - Cite only what you actually read: every file:line you state must come from a tool result you saw.
   If a read was truncated (it says "… more lines"), page further before quoting that region; if you
   couldn't locate a definition, say so rather than guessing a file/line. Mark inferences as inferred.
+- For a long-running or interactive command (booting QEMU, `tail -f`, a watch loop), run it under a
+  bounded `timeout` and REDIRECT output to a file (`… > /tmp/out.log 2>&1`), then read the file —
+  the captured stdout of a killed, block-buffered process can come back empty.
 - Be concise in narration; let tool results speak. Stop when the task is genuinely complete.
 """
 

@@ -78,3 +78,17 @@ pre-hinted the timeout and the verdict happened to survive truncation):
 - **B2 (tool-misuse, HIGH) → FIXED:** middle-truncation (`MAX_OUTPUT=8000`) could hide a `gcc error`
   in the dropped middle → false "success". Fix (shell.py): `run` output is now tail-biased and
   surfaces error/warning lines from the omitted middle (verified: a buried `gcc: error` is surfaced).
+
+## Run: boot-r1 (subagent-driven, single QEMU BOOT task, 8006) — microagent BOOTED the kernel ✓
+With NO run-script in the tree, microagent built the launch from scratch (readelf + `qemu-system-aarch64
+-machine/-cpu help`) → `qemu-system-aarch64 -machine virt,gic-version=3 -cpu cortex-a53 -m 1G -nographic
+-kernel bootimage.elf …`. Kernel reached the **HongMeng 1.12.0 banner + userspace init**, then userspace
+MAC-denial → watchdog reboot at 10.5s (kernel boot OK; userspace policy issue). Verdict grounded in the
+real 1742-line console; 31 calls, 0 failures; correctly used `run` not the rpi4 `deploy_qemu`.
+- **POSITIVE:** end-to-end deploy/boot works; built the QEMU cmd unaided; grounded boot/panic verdict.
+- **B1 re-validated:** partial-output-on-timeout WORKS for flushed output (controlled test returns the
+  early lines). The boot run's first empty result was QEMU **block-buffering** through a pipe (a killed
+  block-buffered process has flushed nothing) — inherent, not a bug.
+- **B3 (efficiency, MED) → FIXED (prompt):** for long/interactive commands (qemu boot, tail -f), redirect
+  to a file under a bounded timeout and read it, rather than relying on captured stdout — the pattern the
+  agent had to discover itself. Added to the system prompt.
