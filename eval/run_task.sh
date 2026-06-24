@@ -9,6 +9,13 @@
 set -uo pipefail
 MODEL="$1"; TASK_B64="$2"; LOCAL_DIR="$3"
 REMOTE="${4:-devbox}"; TREE="${5:-/srv/workspace/HM_Kernel/work_code/kernel/hongmeng}"
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Sync current code first so subagent-driven runs test the LATEST microagent (set SYNC=0 to skip,
+# e.g. when a batch caller has already synced once to avoid concurrent rsync races).
+if [ "${SYNC:-1}" != "0" ]; then
+  rsync -az --exclude=__pycache__ --exclude='*.pyc' --exclude='eval/runs' "$HERE/" "$REMOTE:microagent/"
+fi
 
 mkdir -p "$LOCAL_DIR"
 RR="microagent-runs/$(basename "$LOCAL_DIR")-$$"

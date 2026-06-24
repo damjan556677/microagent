@@ -7,6 +7,7 @@ such commands are refused rather than run.
 """
 import os
 import re
+import signal
 import subprocess
 import time
 
@@ -46,22 +47,32 @@ def run(ctx, command: str, cwd: str = "", timeout: int = 1800) -> str:
                     f"It needs explicit human confirmation. If unintended, choose a non-destructive approach.)")
 
     t0 = time.time()
+    # start_new_session=True puts the command in its own process group so that, on timeout, we can
+    # kill the WHOLE group (e.g. a qemu spawned by the shell) — otherwise children orphan and leak.
     try:
-        p = subprocess.run(command, shell=True, cwd=workdir, capture_output=True,
-                           text=True, timeout=timeout, errors="replace")
-        rc, out = p.returncode, (p.stdout or "") + (p.stderr or "")
-    except subprocess.TimeoutExpired as e:
-        def _dec(x):
-            return "" if x is None else (x if isinstance(x, str) else x.decode("utf-8", "replace"))
-        part = _dec(e.stdout) + _dec(e.stderr)              # keep partial output — don't discard it
-        body = (f"$ {command}\n(cwd={workdir})\n(error: timed out after {timeout}s — if this is a "
-                f"long build, retry with a larger `timeout`. Partial output below:)\n" + part)
-        return _run_truncate(body)
+        p = subprocess.Popen(command, shell=True, cwd=workdir, stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, text=True, errors="replace",
+                             start_new_session=True)
     except Exception as e:
         return f"$ {command}\n(cwd={workdir})\n(error: {e})"
+    try:
+        out, _ = p.communicate(timeout=timeout)
+        rc = p.returncode
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(os.getpgid(p.pid), signal.SIGKILL)    # reap the whole group — no orphans
+        except Exception:
+            p.kill()
+        try:
+            out, _ = p.communicate(timeout=5)               # drain any buffered partial output
+        except Exception:
+            out = ""
+        body = (f"$ {command}\n(cwd={workdir})\n(error: timed out after {timeout}s — if this is a "
+                f"long build, retry with a larger `timeout`. Partial output below:)\n" + (out or ""))
+        return _run_truncate(body)
     dt = time.time() - t0
     header = f"$ {command}\n(cwd={workdir})\nexit={rc}  time={dt:.1f}s\n"
-    return _run_truncate(header + (out if out.strip() else "(no output)"))
+    return _run_truncate(header + (out if out and out.strip() else "(no output)"))
 
 
 TOOLS = [
