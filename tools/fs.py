@@ -110,8 +110,10 @@ def list_dir(ctx, path: str = ".") -> str:
     return truncate(f"# {p}  ({len(entries)} entries)\n" + "\n".join(rows))
 
 
-def glob_files(ctx, pattern: str, limit: int = 300) -> str:
+def glob_files(ctx, pattern: str, path: str = "", limit: int = 300) -> str:
     base = ctx.cfg.active_dir
+    if path:                                       # optional subtree scope (models reach for this)
+        base = path if os.path.isabs(path) else os.path.join(base, path)
     matches = []
     for pat in _expand_braces(pattern):            # {c,h} alternations (glob.glob can't)
         full = pat if os.path.isabs(pat) else os.path.join(base, pat)
@@ -152,8 +154,11 @@ TOOLS = [
         "list_dir", "List a directory's entries (dirs marked with /, files with size).",
         {"path": {"type": "string", "description": "directory (default '.').", "default": "."}})),
     ("glob", glob_files, schema(
-        "glob", "Find files matching a shell glob (recursive ** supported), relative to the active tree.",
-        {"pattern": {"type": "string", "description": "e.g. 'kernel/sched/*.c' or '**/futex*.c'."},
+        "glob", "Find files matching a shell glob (recursive ** and {a,b} braces supported), relative "
+        "to the active tree (or to `path`).",
+        {"pattern": {"type": "string", "description": "e.g. 'kernel/sched/*.c' or '**/futex*.c' or '**/*.{c,h}'."},
+         "path": {"type": "string", "description": "optional subtree to scope the search (relative to the active tree).",
+                  "default": ""},
          "limit": {"type": "integer", "default": 300}},
         ["pattern"])),
 ]

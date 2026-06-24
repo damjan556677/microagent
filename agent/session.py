@@ -57,6 +57,9 @@ How to work:
   small. Read targeted line ranges (not whole files), and prefer search/grep, `cscope`, the nav
   tools, `kconfig get`, or counting commands (`grep -c ... .config`) over dumping whole files or
   the entire `.config`.
+- Cite only what you actually read: every file:line you state must come from a tool result you saw.
+  If a read was truncated (it says "… more lines"), page further before quoting that region; if you
+  couldn't locate a definition, say so rather than guessing a file/line. Mark inferences as inferred.
 - Be concise in narration; let tool results speak. Stop when the task is genuinely complete.
 """
 
