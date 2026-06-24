@@ -16,7 +16,7 @@ import os
 import readline  # noqa: F401 — importing enables line editing + history
 
 from agent import llm
-from tools import registry
+from tools import registry, env
 from . import palette as P
 
 HELP = (
@@ -93,6 +93,8 @@ def _handle_command(session, console, line: str) -> bool:
         console.system("conversation reset")
     elif cmd == "/tools":
         console.system("tools: " + ", ".join(registry.tool_names()))
+        for ln in env.report_lines():
+            console.system(ln)
     elif cmd == "/index":
         if "build_index" in registry.tool_names():
             console.spinner("building index")

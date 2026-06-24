@@ -16,12 +16,27 @@ def _resolve(ctx, path: str | None) -> str:
     return path if os.path.isabs(path) else os.path.join(ctx.cfg.active_dir, path)
 
 
+def _expand_braces(pat: str) -> list:
+    """Expand shell-style {a,b,c} alternations (Python's glob does NOT) — `*.{c,h}` -> *.c, *.h."""
+    i = pat.find("{")
+    if i < 0:
+        return [pat]
+    j = pat.find("}", i)
+    if j < 0:
+        return [pat]
+    pre, body, post = pat[:i], pat[i + 1:j], pat[j + 1:]
+    out = []
+    for alt in body.split(","):
+        out.extend(_expand_braces(pre + alt + post))
+    return out
+
+
 def read_file(ctx, path: str, offset: int = 1, limit: int = 250) -> str:
     p = _resolve(ctx, path)
     if not os.path.exists(p):
         return f"(error: no such file: {p})"
     if os.path.isdir(p):
-        return f"(error: {p} is a directory; use list_dir)"
+        return f"(note: {p} is a directory — listing it instead)\n" + list_dir(ctx, path)
     try:
         with open(p, encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
@@ -97,12 +112,14 @@ def list_dir(ctx, path: str = ".") -> str:
 
 def glob_files(ctx, pattern: str, limit: int = 300) -> str:
     base = ctx.cfg.active_dir
-    pat = pattern if os.path.isabs(pattern) else os.path.join(base, pattern)
-    try:
-        matches = globmod.glob(pat, recursive=True)
-    except Exception as e:
-        return f"(error: bad glob {pattern!r}: {e})"
-    matches.sort()
+    matches = []
+    for pat in _expand_braces(pattern):            # {c,h} alternations (glob.glob can't)
+        full = pat if os.path.isabs(pat) else os.path.join(base, pat)
+        try:
+            matches.extend(globmod.glob(full, recursive=True))
+        except Exception as e:
+            return f"(error: bad glob {pattern!r}: {e})"
+    matches = sorted(set(matches))
     shown = matches[:limit]
     extra = "" if len(matches) <= limit else f"\n... [{len(matches) - limit} more]"
     return truncate(f"{len(matches)} match(es) for {pattern!r}:\n" + "\n".join(shown) + extra)

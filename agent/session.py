@@ -5,7 +5,7 @@ import os
 
 from . import loop, llm
 from .sessionlog import SessionLogger
-from tools import registry
+from tools import registry, env
 from tools.spec import ToolContext
 
 SYSTEM_TMPL = """\
@@ -21,12 +21,23 @@ Remote host that runs QEMU: {ssh}
 How to work:
 - Think first, then act. Before a tool call, briefly state your goal and what the result will
   tell you; after a result, say what it showed and your next step.
-- Orient before diving on an unfamiliar tree: `list_dir` the root FIRST to learn its ACTUAL
-  layout — do NOT assume a standard kernel tree (`arch/`, top-level `Makefile`/`.config`/`Kconfig`
-  may be absent, or the source may be nested in a subdir). If a path doesn't exist, `list_dir` its
-  parent to find the real name instead of guessing variants. `search` IS ripgrep/grep (there is no
-  separate `grep` tool); if a search returns nothing, change scope or strategy rather than firing
-  many near-duplicate searches. Use `run` only for real shell pipelines.
+- Orient before diving on an unfamiliar tree: `list_dir` the root FIRST to learn its ACTUAL layout
+  — do NOT assume a standard kernel tree (`arch/`, top-level `Makefile`/`.config`/`Kconfig` may be
+  absent, or the source may be nested in a subdir). Derive next paths ONLY from entries you have
+  actually seen; never probe a mainline path (`kernel/sched`, `arch/<a>/…`) by reflex.
+- Never guess paths, at the root OR deep in the tree. If ANY path is missing, `list_dir` its parent
+  to find the real name — do NOT re-guess variants, and do NOT `run ls`/`run find` to probe.
+- Prefer the native tools over the shell: `search` (it IS ripgrep/grep), `glob`, `read_file`,
+  `kconfig`. Do NOT `run grep`/`run find`/`run cat` for what those already do; use `run` only for
+  real shell pipelines. Start a search UNANCHORED (a bare substring), then refine; if it returns
+  nothing, change scope/strategy — don't fire near-duplicate searches; if a symbol/macro isn't
+  defined in-tree, conclude it's external and move on. Scope `glob`/`search` to the relevant subtree
+  — a tree-wide `**/…` can return tens of thousands of irrelevant matches.
+- Batch independent read-only calls in ONE turn (several `list_dir`/`read_file`, or a
+  `find … | wc -l` count) — every turn re-sends the whole transcript, so fewer turns = far less cost.
+- Semantic nav (clangd: `outline`/`hover`/`references`/`find_symbol`) needs a compile_commands.json.
+  If `build_index` fails or these return "no symbols", FALL BACK to `search` and say so — do NOT
+  hand-build or edit a compile_commands.json, and never loop retrying the same failing setup.
 - Navigate fastest-first: `search` (ripgrep) always works with no index — it's the best first
   tool for a definition (`search 'name('`) or callers/uses. The clangd tools (`hover`, `outline`,
   `references`, `find_symbol`) are precise and type-aware and need `compile_commands.json` (build
@@ -56,6 +67,7 @@ def build_system_prompt(cfg) -> str:
         arch=cfg.arch or "(host)",
         cross=cfg.cross_compile or "(native)",
         ssh=cfg.ssh.target if cfg.ssh.host else "(none configured)")
+    base += "\n\n" + env.capability_summary()
     kp = cfg.knowledge_pack_path
     if cfg.knowledge_pack and os.path.isfile(kp):
         try:

@@ -29,8 +29,12 @@ def search(ctx, pattern: str, path: str = ".", glob: str = "", max_results: int 
     """Search file contents. Uses ripgrep if present, else grep -rn."""
     base = ctx.cfg.active_dir
     target = path if os.path.isabs(path) else os.path.join(base, path)
+    if not os.path.exists(target):       # bad path: error out (don't masquerade as 0 results)
+        return f"(error: path not found: {target}. Orient with list_dir before scoping a search.)"
     if shutil.which("rg"):
-        cmd = ["rg", "-n", "--no-heading", "--color=never", "-S"]
+        # --no-ignore: match the grep fallback — don't silently skip .gitignore'd files (.git, a
+        # hidden dir, is still skipped). Otherwise `search` returns different results across hosts.
+        cmd = ["rg", "-n", "--no-heading", "--color=never", "-S", "--no-ignore"]
         if glob:
             cmd += ["-g", glob]
         cmd += ["-e", pattern, target]
@@ -44,7 +48,7 @@ def search(ctx, pattern: str, path: str = ".", glob: str = "", max_results: int 
     rc, out = _run(cmd, base, timeout=120)
     lines = out.splitlines()
     if rc not in (0, 1):                 # 1 == "no matches" for both tools
-        return f"(search failed via {engine}: {out.strip()[:300]})"
+        return f"(error: search failed via {engine}: {out.strip()[:300]})"
     if not lines:
         return f"no matches for {pattern!r} (engine: {engine})"
     shown = lines[:max_results]
