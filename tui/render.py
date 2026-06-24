@@ -29,6 +29,16 @@ def _one_line(s: str, limit: int = 100) -> str:
     return s if len(s) <= limit else s[: limit - 1] + "…"
 
 
+def _fmt_tokens(n: int) -> str:
+    """Compact token count: 1.0M, 81.9K, 512."""
+    n = int(n or 0)
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.0f}K"
+    return str(n)
+
+
 _MD_HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
 _MD_INLINE = re.compile(r"\*\*(?P<b>.+?)\*\*|`(?P<c>[^`\n]+)`")
 
@@ -67,6 +77,8 @@ class Console:
         self._text_started = False        # printed the ● marker for this message yet?
         self._in_fence = False            # inside a ``` code fence
         self._thinking_open = False       # a thinking char-stream line is open
+        self._ctx_used = 0                # prompt tokens on the latest turn (current context fill)
+        self._ctx_total = 0               # active model's context window (0 = unknown)
         self._t0 = time.time()
         self._stop = False
         self._isatty = self.out.isatty()
@@ -81,7 +93,10 @@ class Console:
                 if self._spin_on and not self._streaming and self._isatty:
                     frame = next(self._frames)
                     dt = time.time() - self._t0
-                    txt = f"{frame} {self._spin_label or 'working'}  ({dt:.0f}s)"
+                    ctx = ""
+                    if self._ctx_total:
+                        ctx = f"  · ctx {100.0 * self._ctx_used / self._ctx_total:.0f}%"
+                    txt = f"{frame} {self._spin_label or 'working'}  ({dt:.0f}s){ctx}"
                     self.out.write("\r" + P.paint(txt, P.AMBER) + "\x1b[K")
                     self.out.flush()
             time.sleep(period)
@@ -168,12 +183,13 @@ class Console:
             self.out.write(prefix + render_md_line(line) + "\n")
 
     # ---------------------------------------------------------------- events
-    def banner(self, model_label: str):
+    def banner(self, model_label: str, max_ctx: int = 0):
         w = min(_term_width(), 78)
         self.line()
         self.line(P.paint("  microagent ", P.GOLD, bold=True) +
                   P.paint("· stdlib kernel agent", P.DIM))
-        self.line(P.paint(f"  model {model_label}   tree {self.cfg.active_dir}", P.DIM))
+        ctxs = f"   ctx {_fmt_tokens(max_ctx)}" if max_ctx else ""
+        self.line(P.paint(f"  model {model_label}{ctxs}   tree {self.cfg.active_dir}", P.DIM))
         self.line(P.paint(f"  ssh {self.cfg.ssh.target}   effort {self.cfg.reasoning_effort}", P.DIM))
         self.line(P.rule("─", w))
         self.line(P.paint("  type a task · /help for commands · /quit to exit", P.DIM))
@@ -217,6 +233,9 @@ class Console:
                 bits.append(f"${cost:.4f}")
         if ev.cost and not (ev.usage and ev.usage.get("cost")):
             bits.append(f"${ev.cost:.4f}")
+        if self._ctx_total:
+            pct = 100.0 * self._ctx_used / self._ctx_total
+            bits.append(f"ctx {_fmt_tokens(self._ctx_used)}/{_fmt_tokens(self._ctx_total)} ({pct:.0f}%)")
         tag = "done" if ev.reason == "stop" else ev.reason
         self.line(P.paint(f"  ◆ {tag} — " + " · ".join(bits), P.GOLD, bold=True))
         self.line()
@@ -230,6 +249,8 @@ class Console:
     def render_event(self, ev, counters: dict):
         if isinstance(ev, E.Status):
             self.spinner(ev.label)
+        elif isinstance(ev, E.Ctx):
+            self._ctx_used, self._ctx_total = ev.used, ev.total
         elif isinstance(ev, E.StreamDelta):
             if ev.kind == "thinking" and not self.show_thinking:
                 return

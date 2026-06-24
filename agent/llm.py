@@ -67,7 +67,8 @@ def model_label(name: str | None) -> str:
 # ========================================================== endpoint resolution
 # cfg.model is a SELECTOR: a bare port number (or a configured alias) routes to an
 # internal vLLM server; anything else falls back to OpenRouter.
-_MODEL_CACHE: dict = {}   # base_url -> detected served model id (one /v1/models probe)
+_MODELS_CACHE: dict = {}   # base_url -> /v1/models `data` list (one probe per server)
+_CTX_CACHE: dict = {}      # (base_url, model) -> context window in tokens (0 = unknown)
 
 
 @dataclass
@@ -78,24 +79,72 @@ class Endpoint:
     reasoning: bool        # whether to send OpenRouter's reasoning:{effort} param
     label: str
     decode: str = "sse"    # transport: "sse" (stream) | "json" (non-stream) | "auto"
+    max_ctx: int = 0       # context window in tokens (0 = unknown)
+
+
+def _probe_headers(api_key: str) -> dict:
+    # Accept-Encoding: identity — some gateways send a malformed gzip header (e.g. :8007).
+    h = {"Accept-Encoding": "identity"}
+    if api_key:
+        h["Authorization"] = f"Bearer {api_key}"
+    return h
+
+
+def _models(base_url: str, api_key: str) -> list:
+    """Cached GET /v1/models -> the `data` list (empty on failure)."""
+    if base_url in _MODELS_CACHE:
+        return _MODELS_CACHE[base_url]
+    data = []
+    try:
+        r = requests.get(base_url.rstrip("/") + "/models", headers=_probe_headers(api_key), timeout=5)
+        if r.status_code == 200:
+            data = r.json().get("data") or []
+    except Exception:
+        data = []
+    _MODELS_CACHE[base_url] = data
+    return data
 
 
 def _detect_model(base_url: str, api_key: str) -> str:
-    """Best-effort: ask an OpenAI-compatible server for its served model id (/v1/models)."""
-    if base_url in _MODEL_CACHE:
-        return _MODEL_CACHE[base_url]
-    mid = ""
+    """Best-effort served model id from /v1/models."""
+    data = _models(base_url, api_key)
+    return (data[0].get("id") or "") if data else ""
+
+
+_CTX_RE = re.compile(r"maximum context length (?:is|of)\s+(\d+)", re.I)
+_CTX_RE2 = re.compile(r"max_(?:model_len|total_tokens)\D*?(\d+)", re.I)
+
+
+def _ctx_from_overflow(base_url: str, api_key: str, model: str) -> int:
+    """Fallback for gateways that hide max_model_len: request max_tokens far above the
+    window so the server returns a 400 that *names* the limit. Non-generating + cheap."""
     try:
-        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-        r = requests.get(base_url.rstrip("/") + "/models", headers=headers, timeout=5)
-        if r.status_code == 200:
-            data = r.json().get("data") or []
-            if data:
-                mid = data[0].get("id") or ""
+        r = requests.post(base_url.rstrip("/") + "/chat/completions",
+                          headers={**_probe_headers(api_key), "Content-Type": "application/json"},
+                          json={"model": model or "x", "messages": [{"role": "user", "content": "hi"}],
+                                "max_tokens": 100_000_000, "stream": False}, timeout=15)
+        m = _CTX_RE.search(r.text or "") or _CTX_RE2.search(r.text or "")
+        return int(m.group(1)) if m else 0
     except Exception:
-        mid = ""
-    _MODEL_CACHE[base_url] = mid
-    return mid
+        return 0
+
+
+def _detect_ctx(base_url: str, api_key: str, model: str) -> int:
+    """Context window for `model`: prefer /v1/models max_model_len (direct vLLM); else an
+    overflow probe (gateways). Cached per (server, model). 0 if undetermined."""
+    key = (base_url, model)
+    if key in _CTX_CACHE:
+        return _CTX_CACHE[key]
+    ctx = 0
+    for m in _models(base_url, api_key):
+        if not model or m.get("id") == model:
+            if m.get("max_model_len"):
+                ctx = int(m["max_model_len"])
+                break
+    if not ctx:
+        ctx = _ctx_from_overflow(base_url, api_key, model)
+    _CTX_CACHE[key] = ctx
+    return ctx
 
 
 def resolve_endpoint(cfg, detect: bool = True) -> Endpoint:
@@ -107,13 +156,16 @@ def resolve_endpoint(cfg, detect: bool = True) -> Endpoint:
     sel = (cfg.model or "").strip()
     hit = cfg.internal.resolve(sel)
     if hit:
-        host, port, model, decode = hit
+        host, port, model, decode, max_ctx = hit
         base = f"{cfg.internal.scheme}://{host}:{port}/v1"
         key = cfg.internal.api_key
         if not model and detect:
             model = _detect_model(base, key)
+        if not max_ctx and detect:
+            max_ctx = _detect_ctx(base, key, model)
         label = f"{model} @:{port}" if model else f"internal:{port}"
-        return Endpoint(base, key, model or sel, cfg.internal.reasoning, label, decode or "auto")
+        return Endpoint(base, key, model or sel, cfg.internal.reasoning,
+                        label, decode or "auto", max_ctx)
     return Endpoint(cfg.api_base, cfg.api_key, resolve_model(sel), True, model_label(sel), "sse")
 
 

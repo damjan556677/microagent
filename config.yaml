@@ -13,22 +13,23 @@ temperature: 0.3
 #   /model 8006 -> DS-V4-Flash ; /model 8003 -> GLM-5.2 ; /model 8002 -> GLM-5-FP8
 # No reasoning:{effort} is sent (vLLM rejects it); no API key unless internal.api_key_env names one.
 # `decode` is the transport per port (hub ports differ): sse (stream) | json (non-stream) | auto.
-#   - 8002 (GLM-5-FP8): JSON works.   - 8007 (GLM5.1): needs SSE.   - direct vLLM :8000: both.
+#   - 8002 (GLM-5-FP8): JSON works.   - 8007 (GLM5.1): needs SSE.   - 8006 (direct vLLM): both.
 internal:
   host: 10.123.51.179      # default host; a per-port `host:` below overrides it (other machines)
   scheme: http
   api_key_env: ""          # e.g. INTERNAL_API_KEY if a server was started with --api-key
   reasoning: false
   decode: auto             # default for unlisted ports: stream, fall back to JSON if no SSE body
+  # max_ctx = context window. 0 / omitted => detect at runtime: direct vLLM reports it in
+  # /v1/models; gateways don't, so we fall back to a one-off non-generating overflow probe.
+  # The gateway values below are pinned manually (from that probe) so no probe runs at runtime.
   ports:                   # model: "" => auto-detect via /v1/models; host: "" => use host above
-    8002: { alias: glm5-fp8, model: GLM-5-FP8,       decode: json }   # gateway: JSON works
-    8003: { alias: glm52,    model: GLM-5.2,         decode: auto }   # gateway, chat-only: SSE+JSON ok
-    8006: { alias: ds-flash, model: DS-V4-Flash-8no, decode: auto }   # direct vLLM (->DGX): anything works
-    8007: { alias: glm51,    model: GLM5.1,          decode: sse }    # gateway: JSON 500s, needs SSE
-    # Direct vLLM on the DGX node (what :8006 proxies to) — bypasses the hub. Note the host override.
-    8000: { alias: dgx-direct, host: 10.123.51.31, model: "", decode: auto }  # direct vLLM: anything works
+    8002: { alias: glm5-fp8, model: GLM-5-FP8,       decode: json, max_ctx: 202752 }  # gateway: JSON
+    8003: { alias: glm52,    model: GLM-5.2,         decode: auto, max_ctx: 81920 }   # gateway: SSE+JSON
+    8006: { alias: ds-flash, model: DS-V4-Flash-8no, decode: auto }   # direct vLLM (->DGX): ctx auto (1M)
+    8007: { alias: glm51,    model: GLM5.1,          decode: sse,  max_ctx: 202752 }  # gateway: needs SSE
   aliases:                 # named model variants pinned on a port (override the port's default model)
-    glm52-think: { port: 8003, model: GLM-5.2-think }   # GLM-5.2 reasoning variant on the 8003 gateway
+    glm52-think: { port: 8003, model: GLM-5.2-think }   # GLM-5.2 reasoning variant (inherits 8003 max_ctx)
 
 # OpenRouter — the fallback / frontier provider. Select by alias: /model opus | sonnet | glm | deepseek
 openrouter:

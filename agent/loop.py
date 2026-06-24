@@ -7,7 +7,7 @@ ToolContext, and a dispatch callable. A conservative "finish-the-job" nudge re-p
 the model only when it leaves a build/deploy workflow half-done.
 """
 from . import llm, history
-from .events import (Status, ToolCall, ToolResult, Nudge, Done)
+from .events import (Status, ToolCall, ToolResult, Nudge, Done, Ctx)
 from .llm import Completion
 
 _SOURCE_SUFFIXES = (".c", ".h", ".S", ".s", "Kconfig", "Kbuild", "Makefile",
@@ -65,6 +65,7 @@ def run(cfg, ctx, messages, tools_schema, dispatch, max_turns=None, nudge=None):
     nudge_max = cfg.nudge if nudge is None else nudge
     nudges_used = 0
     usage_tot = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "cost": 0.0}
+    max_ctx = llm.resolve_endpoint(cfg).max_ctx     # context window of the active endpoint (0 = unknown)
     state: dict = {}
 
     for _turn in range(cap):
@@ -80,6 +81,7 @@ def run(cfg, ctx, messages, tools_schema, dispatch, max_turns=None, nudge=None):
             return
 
         _accum(usage_tot, final.usage)
+        yield Ctx(int((final.usage or {}).get("prompt_tokens", 0) or 0), max_ctx)
         content = llm.strip_markup(final.content)
         messages.append(history.assistant_dict(content, final.tool_calls))
 

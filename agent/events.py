@@ -51,6 +51,14 @@ class Done:
 
 
 @dataclass
+class Ctx:
+    """Context-window usage after a model turn: `used` prompt tokens of a `total` window.
+    The TUI shows it as a live percentage (total = 0 means the window is unknown)."""
+    used: int
+    total: int = 0
+
+
+@dataclass
 class Status:
     """A spinner phase label the loop emits before a blocking step (model call / tool run).
     The TUI shows an animated spinner with this label until the next content event."""

@@ -53,9 +53,13 @@ def _handle_command(session, console, line: str) -> bool:
         if arg:
             cfg.model = arg
             session.refresh_system()
-            console.system(f"model → {llm.current_label(cfg)}")
+            ep = llm.resolve_endpoint(cfg)
+            ctxs = f"  · ctx {ep.max_ctx:,}" if ep.max_ctx else ""
+            console.system(f"model → {ep.label}{ctxs}")
         else:
-            console.system(f"model = {llm.current_label(cfg)}")
+            ep = llm.resolve_endpoint(cfg)
+            ctxs = f"  · ctx {ep.max_ctx:,}" if ep.max_ctx else ""
+            console.system(f"model = {ep.label}{ctxs}")
             ports = "  ".join(
                 (f"{p} ({s.alias})" if s.alias else str(p))
                 for p, s in sorted(cfg.internal.ports.items()))
@@ -103,7 +107,8 @@ def _handle_command(session, console, line: str) -> bool:
 
 
 def run(session, console):
-    console.banner(llm.current_label(session.cfg))
+    ep = llm.resolve_endpoint(session.cfg)
+    console.banner(ep.label, ep.max_ctx)
     while True:
         try:
             line = input(P.paint("\nmicroagent › ", P.GOLD, bold=True))

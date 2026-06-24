@@ -55,6 +55,7 @@ class InternalServer:
     model: str = ""        # served model id; "" => auto-detect via /v1/models
     host: str = ""         # "" => use InternalConfig.host (servers may live on other machines)
     decode: str = ""       # "sse" | "json" | "auto"; "" => InternalConfig.decode (hub ports differ)
+    max_ctx: int = 0       # context window; 0 => detect (vLLM /v1/models, else overflow probe)
 
 
 @dataclass
@@ -64,6 +65,7 @@ class InternalAlias:
     model: str = ""        # served model id sent to that port (overrides the port's default)
     host: str = ""
     decode: str = ""
+    max_ctx: int = 0
 
 
 @dataclass
@@ -80,9 +82,11 @@ class InternalConfig:
     api_key: str = ""              # resolved from api_key_env at load() time
 
     def resolve(self, selector: str):
-        """(host, port, model, decode) for a bare port number or a configured alias, else None.
+        """(host, port, model, decode, max_ctx) for a bare port number or a configured
+        alias, else None.
 
-        `model` may be "" — the caller then auto-detects it from the server's /v1/models.
+        `model` may be "" (caller auto-detects via /v1/models); `max_ctx` may be 0
+        (caller detects via /v1/models, else an overflow probe).
         """
         sel = (selector or "").strip()
         if not sel:
@@ -93,7 +97,8 @@ class InternalConfig:
             return ((srv.host or self.host) if srv else self.host,
                     port,
                     srv.model if srv else "",
-                    (srv.decode or self.decode) if srv else self.decode)
+                    (srv.decode or self.decode) if srv else self.decode,
+                    srv.max_ctx if srv else 0)
         low = sel.lower()
         # named aliases first (they may pin a model variant on an otherwise-default port)
         for name, a in self.aliases.items():
@@ -101,10 +106,12 @@ class InternalConfig:
                 srv = self.ports.get(a.port)
                 host = a.host or (srv.host if srv else "") or self.host
                 decode = a.decode or (srv.decode if srv else "") or self.decode
-                return (host, a.port, a.model or (srv.model if srv else ""), decode)
+                max_ctx = a.max_ctx or (srv.max_ctx if srv else 0)
+                return (host, a.port, a.model or (srv.model if srv else ""), decode, max_ctx)
         for port, srv in self.ports.items():
             if srv.alias and srv.alias.lower() == low:
-                return (srv.host or self.host, port, srv.model, srv.decode or self.decode)
+                return (srv.host or self.host, port, srv.model,
+                        srv.decode or self.decode, srv.max_ctx)
         return None
 
 
@@ -181,6 +188,7 @@ def _coerce_internal(d: dict) -> InternalConfig:
             model=v.get("model", ""),
             host=v.get("host", ""),
             decode=v.get("decode", ""),
+            max_ctx=int(v.get("max_ctx", 0) or 0),
         )
     aliases = {}
     for name, v in (d.get("aliases") or {}).items():
@@ -190,6 +198,7 @@ def _coerce_internal(d: dict) -> InternalConfig:
             model=v.get("model", ""),
             host=v.get("host", ""),
             decode=v.get("decode", ""),
+            max_ctx=int(v.get("max_ctx", 0) or 0),
         )
     cfg = InternalConfig(
         host=d.get("host", "10.123.51.179"),
