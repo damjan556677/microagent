@@ -1,0 +1,10 @@
+# 8 diverse discovery tasks — run_discovery.sh fans these out, one job per task, round-robin model.
+# Read-only; each stresses a different slice of microagent's tool surface.
+Map the top-level layout of this tree and identify the actual kernel source root (it may be nested). How does the structure differ from a mainline Linux tree?
+Find the definition of the primary memory allocator (kmalloc or its equivalent) and three callers. Cite file:line for each.
+Locate the system-call entry/dispatch path and name the key files and functions.
+Pick a core scheduler function and trace one of its callees two levels deep, citing file:line at each step.
+Summarize the memory-management subsystem: its main directories, allocators, and entry points.
+How is this kernel built? Find the build entry point(s) or scripts — there may be no top-level Makefile.
+How many .c and .h files are in this tree, and which directory holds the most source? Answer with counts, not file dumps.
+Use the clangd tools (outline/hover) on a representative source file; if clangd is unavailable, fall back to search and say so.

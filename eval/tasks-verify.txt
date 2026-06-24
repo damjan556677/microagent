@@ -1,0 +1,8 @@
+# microagent VERIFICATION suite — the 5 original tasks with a known 8006 baseline.
+# Used with MODE=mirror to A/B/C/D a fix across all models (same tasks, every model).
+# Baseline (8006, pre-fix): t1 58c/363K, t2 38c/187K, t3 65c/773K, t4 43c/163K, t5 1c/7K.
+What kernel probe mechanisms (kprobes, uprobes, tracepoints, ftrace) are available in this tree? Cite the key files.
+Find the definition of kmalloc and a few of its callers. Cite file:line for each.
+Summarize how the top-level build produces the kernel image — which Makefile targets and steps are involved.
+List the BPF-related CONFIG options in this tree and whether each is enabled.
+Describe the top-level directory layout of this tree in a few lines.

@@ -1,0 +1,42 @@
+# microagent — discovery findings backlog
+
+Evidence-backed weaknesses found by eval discovery runs. Drawn into Round-N fix batches by
+severity / # models affected. Status: `open` → `fixed` (commit) / `wontfix`.
+
+## Run: disc-20260624-124237 (8 tasks, models 8006/8007/8002/8003, orient-first state)
+Outcome: 6/8 answered correctly & efficiently; **task-08 (clangd nav) hit `max_turns` with no answer**
+and surfaced most of the high-severity items. task-07 (file counts, 4 calls) is the positive ideal.
+
+### HIGH
+| id | category | title | evidence | proposed fix |
+|---|---|---|---|---|
+| F1 | missing-capability | clangd client never reloads a CDB created mid-session → permanent "no symbols" | t08: `clangd --check`=0 errors (call 263) but `outline`/`hover` still "no symbols"; `nav.py:152-167` caches client per-root, `open()` early-returns on `_opened` (123-124); no reload hook | on `build_index` success / new compile_commands.json, respawn the cached clangd client (or send didChangeConfiguration + re-didOpen) |
+| F2 | missing-capability | `build_index` is dead on non-Kbuild trees (CMake/Yocto) — hard-requires a Makefile, no fallback | t08 call 27 `build_index` → "(error: …no Makefile — not a kernel tree?)"; `codeindex.py:71` | when no Makefile, generate CDB via `cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` / `bear` / `intercept-build`, or emit a minimal CDB |
+| F3 | safety | agent MUTATED the tree to force tooling on a read-only task (synthesized compile_commands.json) | t08: call 66 `write_file compile_commands.json` + 11× `edit_file` on it | prompt rule "never synthesize compile_commands.json; if build_index fails, fall back to search"; consider gating write/edit in read-only/eval mode |
+| F4 | correctness | ignored the explicit "fall back to search and say so" and emitted NO final answer (dangling tool result, max_turns) | t08 ends call 316 on a tool result, reason=max_turns | prompt rule: after 1 failed semantic-nav setup, stop and answer via `search` + a one-line "clangd unavailable" note |
+| F5 | efficiency | runaway loop — ~14 identical edit→re-check→next-missing-header cycles, never converges, no give-up | t08 calls 76-253 | detect ≥3 near-identical failing cycles (same tool, same error class) → force strategy switch / abort to answer |
+| F6 | efficiency | max_turns ends with a dangling tool result (no answer); 67% of ctx unused | t08 reason=max_turns at 65 calls, ctx 33% | on max_turns, inject a final "summarize findings and answer now" turn before terminating |
+
+### MED
+| id | category | title | evidence | proposed fix |
+|---|---|---|---|---|
+| F7 | tool-misuse | `glob` brace patterns `{c,h}` silently return 0 (Python glob has no brace-expansion) | t05 calls 47/115/123 `**/*.{c,h}` → 0 despite .c/.h existing; `tools/fs.py:102` | expand `{a,b}` alternations before `glob.glob`, or document/validate in the tool schema |
+| F8 | tool-misuse | bad `path` to `search` returns ok=true with a "(search failed via rg: No such file)" body → counted as success | t02 calls 3/4 (`include`, `mm`) | validate `path` exists (or return ok=false) so bad-path calls register as failures |
+| F9 | efficiency | unscoped `**/…` globs return 10k–24k-match firehoses that bloat context, add no signal | t01 `**/Makefile`=24240; t05 `**/*mm*`=24325, `**/*page*`=9558 | prompt: scope globs to the active subtree; tool: cap + warn on huge match counts |
+| F10 | tool-misuse | `read_file` on a directory wastes a call (error → re-do as list_dir) — recurs across tasks | t01 call ~21, t05 calls 61/69 (".. is a directory; use list_dir") | have `read_file` auto-fall-back to a directory listing instead of erroring |
+| F11 | tool-misuse | nav tools return bare "no symbols"/"no hover info" with no cause or fallback hint | t08 calls 24/35/258 | when a TU has 0 symbols, report likely cause (no CDB / preamble errors) + suggest `search` |
+| F12 | efficiency | verbose `run` output (clangd --check cc1 lines, find dumps) re-sent every turn | t08 calls 78/143 multi-KB dumps; 968K prompt tok for 27K ctx | summarize/cap `run` output before it enters history |
+| F13 | efficiency | token cost is quadratic context re-send with NO prompt caching on local models | t03 520K & t06 319K prompt tok == sum of per-turn ctx; final ctx only 18%/13% | enable prompt caching on the local client (or stop billing the cached prefix in the eval metric) |
+| F14 | efficiency | mainline-Linux path reflex (`include/`, `mm/`, `kernel/sched`, `arch/aarch64/...`) probed before/despite orienting | t02 calls 3/4, t04 call 2 (`kernel/sched`→not a dir), t01 | strengthen orient-first: derive next paths ONLY from observed `list_dir` entries (Round-2 stanza) |
+
+### LOW
+| id | category | title | evidence | fix |
+|---|---|---|---|---|
+| F15 | efficiency | over-anchored regexes (`^void \*kmalloc\(`, `^static inline …`) → guaranteed-empty first searches | t02 calls 1/2, t03 call 38 | prompt: start with a bare unanchored substring, then refine |
+| F16 | tool-misuse | `edit_file` brittle on whitespace/stale text ("old text not found") | t08 call 238 | optional: whitespace-tolerant matching in edit_file |
+
+### POSITIVE (encode in the system prompt)
+- **Batch independent read-only calls in one turn** — t07 did `list_dir` + two `find|wc -l` in a single
+  turn (4 calls total, 11K tok); cuts the turn-count multiplier that drives token cost.
+- **`find … | wc -l` + `for d in */ … sort -rn | head`** is the right idiom for "how many / which dir".
+- orient-first `list_dir` root and citation discipline (t04: all file:line verified) are working.
