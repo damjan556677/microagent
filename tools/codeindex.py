@@ -68,7 +68,10 @@ def build_index(ctx, what: str = "compile_commands", timeout: int = 1200) -> str
     if not os.path.isdir(root):
         return f"(error: working directory not found: {root})"
     if not os.path.exists(os.path.join(root, "Makefile")):
-        return f"(error: {root} has no Makefile — not a kernel tree?)"
+        return (f"(error: no top-level Makefile at {root} — not a Kbuild tree, so build_index can't "
+                f"run `make compile_commands.json`/cscope/tags. Fall back to `search` for navigation. "
+                f"To enable clangd, generate compile_commands.json out-of-band (e.g. "
+                f"`cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` or `bear -- <build>`), then retry.)")
     want = ["cscope", "tags", "compile_commands"] if what == "all" else [what]
     report = []
     if "compile_commands" in want:
@@ -87,6 +90,9 @@ def build_index(ctx, what: str = "compile_commands", timeout: int = 1200) -> str
                     out = (p.stdout or "") + (p.stderr or "")
                 except Exception as e:
                     out = f"(bear fallback failed: {e})"
+            if ok:                              # new CDB — drop any stale cached clangd client
+                from . import nav
+                nav.invalidate_clangd(ctx)
             report.append(f"compile_commands.json: {'OK' if ok else 'FAILED'} ({dt:.0f}s)"
                           + ("" if ok else "\n  " + out.strip()[-300:]))
         elif w == "cscope":

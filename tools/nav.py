@@ -167,6 +167,19 @@ def _client(ctx):
     return cli
 
 
+def invalidate_clangd(ctx):
+    """Drop any cached clangd client for the active tree (shutting it down) so a freshly-built
+    compile_commands.json is picked up on the next nav call. Called by build_index on success —
+    a long-lived clangd server otherwise keeps serving its stale, header-less AST."""
+    cache = ctx.extra.get("clangd") or {}
+    cli = cache.pop(ctx.cfg.active_dir, None)
+    if cli is not None:
+        try:
+            cli.shutdown()
+        except Exception:
+            pass
+
+
 _NOPE = ("(clangd not available for semantic nav — install clangd, or use cscope/ctags "
          "(build_index first) / search instead.)")
 
@@ -187,7 +200,8 @@ def find_symbol(ctx, query: str, limit: int = 40) -> str:
         return _NOPE
     res = cli._request("workspace/symbol", {"query": query}, timeout=60) or []
     if not res:
-        return f"clangd: no symbol matches for {query!r} (is compile_commands.json built? run build_index)"
+        return (f"clangd: no symbol matches for {query!r}. If compile_commands.json isn't built, "
+                f"run build_index; if that's not possible (non-Kbuild tree), fall back to `search`.")
     rows = []
     for s in res[:limit]:
         loc = s.get("location", {})
@@ -259,7 +273,8 @@ def outline(ctx, file: str, limit: int = 200) -> str:
             walk(s.get("children", []), depth + 1)
     walk(res)
     if not rows:
-        return f"clangd: no symbols in {file}"
+        return (f"clangd: no symbols in {file} (likely no compile_commands.json / parse errors). "
+                f"Fall back to `search` for an outline; do NOT hand-build a compile_commands.json.")
     return truncate(f"outline of {file}:\n" + "\n".join(rows[:limit]))
 
 
